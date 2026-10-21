@@ -1,0 +1,1117 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EDU-KI Code</title>
+<script>
+// Appearance: theme mode + accent colour, stored per device. Runs before first paint to avoid a flash.
+const ACCENTS = {teal: ["#1f7a80", "#43aab1", "Teal"], blue: ["#2563eb", "#5b9bff", "Blau"], violet: ["#7c3aed", "#a78bfa", "Violett"],
+  pink: ["#db2777", "#f472b6", "Rosa"], red: ["#dc2626", "#f87171", "Rot"], orange: ["#ea580c", "#fb923c", "Orange"],
+  green: ["#16a34a", "#4ade80", "Grün"], yellow: ["#ca8a04", "#facc15", "Gelb"]};
+function loadAppearance() {
+  try { return Object.assign({mode: "auto", accent: "teal"}, JSON.parse(localStorage.appearance || "{}")); } catch { return {mode: "auto", accent: "teal"}; }
+}
+function resolvedMode(m) { return m === "auto" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : m; }
+function lightness(hex) {
+  const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(v => v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+}
+function accentFor(a, dark) {
+  if (ACCENTS[a.accent]) return ACCENTS[a.accent][dark ? 1 : 0];
+  return /^#[0-9a-f]{6}$/i.test(a.accent) ? a.accent : ACCENTS.teal[dark ? 1 : 0];
+}
+function applyAppearance(a) {
+  a = a || loadAppearance();
+  const mode = resolvedMode(a.mode), dark = mode !== "light", root = document.documentElement;
+  root.dataset.theme = mode;
+  const acc = accentFor(a, dark);
+  root.style.setProperty("--accent", acc);
+  root.style.setProperty("--accent-fg", lightness(acc) > 0.19 ? "#101418" : "#ffffff");
+  const bg = getComputedStyle(root).getPropertyValue("--bg").trim();
+  try {   // tell the native window so its header bar matches the page (no-op in a normal browser)
+    window.webkit.messageHandlers.shell.postMessage(JSON.stringify({bg, dark, mode: a.mode}));
+  } catch {}
+  if (window.onAppearance) window.onAppearance();
+}
+try { if (window.webkit.messageHandlers.shell) document.documentElement.classList.add("shell"); } catch {}
+applyAppearance();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (loadAppearance().mode === "auto") applyAppearance(); });
+</script>
+<link rel="stylesheet" href="/vendor/xterm.css">
+<script src="/vendor/highlight.min.js"></script>
+<script src="/vendor/xterm.js"></script>
+<script src="/vendor/xterm-addon-fit.js"></script>
+<style>
+:root{--bg:#f6f6f4;--panel:#fff;--side:#ecece9;--text:#1f1f1f;--muted:#76767a;--line:#dcdcd8;--accent:#1f7a80;--accent-fg:#fff;--user:color-mix(in srgb,var(--accent) 14%,var(--bg));--code:#171a1c;--code-fg:#e6edf3;--danger:#b3261e;--h-kw:#a626a4;--h-str:#50803a;--h-num:#a86a00;--h-com:#8b8b92;--h-fn:#2a6fb5;--h-tag:#c0392b}
+:root[data-theme=dark]{--bg:#161616;--panel:#1e1e1e;--side:#121212;--text:#e9e9e9;--muted:#8d8d92;--line:#2b2b2d;--user:color-mix(in srgb,var(--accent) 18%,var(--bg));--code:#0d0d0e;--danger:#f2b8b5;--h-kw:#c678dd;--h-str:#98c379;--h-num:#d19a66;--h-com:#7f848e;--h-fn:#61afef;--h-tag:#e06c75}
+:root[data-theme=black]{--bg:#000;--panel:#0b0b0c;--side:#000;--text:#ececec;--muted:#8a8a8f;--line:#1e1e21;--user:color-mix(in srgb,var(--accent) 20%,#000);--code:#050505;--danger:#f2b8b5;--h-kw:#c678dd;--h-str:#98c379;--h-num:#d19a66;--h-com:#7f848e;--h-fn:#61afef;--h-tag:#e06c75}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;display:flex}
+button{font:inherit;color:inherit;cursor:pointer}
+aside{width:270px;background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;flex:none}
+.brand{height:40px;display:flex;align-items:center;padding:0 16px;font-weight:650;letter-spacing:.2px}
+.new{margin:0 12px 10px;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--panel);text-align:left;font-weight:550}
+.new:hover{border-color:var(--accent)}
+#chats{flex:1;overflow:auto;padding:0 8px}
+.chat{display:flex;align-items:center;gap:4px;padding:7px 10px;border-radius:8px;cursor:pointer;color:var(--muted)}
+.chat span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat:hover{background:var(--panel)}
+.chat.active{background:var(--panel);color:var(--text);box-shadow:inset 2px 0 0 var(--accent)}
+.chat button{border:0;background:none;color:var(--muted);visibility:hidden;padding:0 4px}
+.chat:hover button{visibility:visible}
+.chat button:hover{color:var(--danger)}
+.me{border-top:1px solid var(--line);padding:8px;position:relative}
+#meBtn{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;padding:7px 8px;border-radius:8px;font-size:14px;color:var(--text);text-align:left}
+#meBtn:hover{background:var(--panel)}
+.av{width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--accent-fg);display:grid;place-items:center;font-size:12px;font-weight:600;flex:none}
+.umenu{position:absolute;bottom:calc(100% - 4px);left:8px;right:8px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px;display:none;box-shadow:0 10px 30px #0005;z-index:8}
+.umenu.on{display:block}
+.umenu .ue{padding:7px 10px;font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis}
+.umenu .ui{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:14px}
+.umenu .ui:hover{background:var(--side)}
+.umenu kbd{font:11px system-ui;color:var(--muted)}
+.umenu hr{border:0;border-top:1px solid var(--line);margin:5px 4px}
+.sbig{width:min(980px,94vw);height:min(660px,88vh);background:var(--panel);border:1px solid var(--line);border-radius:16px;display:flex;overflow:hidden;position:relative;box-shadow:0 20px 60px #0007}
+.snav{width:230px;flex:none;border-right:1px solid var(--line);padding:18px 12px;background:var(--side)}
+.snav h4{margin:0 8px 10px;font-size:12px;font-weight:500;color:var(--muted)}
+.snav div{padding:8px 10px;border-radius:8px;cursor:pointer}
+.snav div.act{background:var(--panel)}
+.scont{flex:1;overflow:auto;padding:28px 36px}
+.scont h2{margin:0 0 18px;font-size:17px;font-weight:600}
+.sx{position:absolute;top:12px;right:14px;border:0;background:none;color:var(--muted);font-size:16px;padding:6px 9px;border-radius:8px}
+.sx:hover{color:var(--text);background:var(--side)}
+.ucard{border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:16px;background:var(--bg)}
+.uhead{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px}
+.uhead b{font-weight:550}.uhead .pct{font-size:22px;font-weight:600}
+.ubar{height:10px;border-radius:6px;background:var(--side);overflow:hidden}
+.ubar i{display:block;height:100%;background:var(--accent);border-radius:6px;min-width:2px}
+.ubar.warn i{background:#e0a030}.ubar.crit i{background:var(--danger)}
+.umuted{color:var(--muted);font-size:13px;margin:10px 0 0}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.tile{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--bg)}
+.tile small{display:block;color:var(--muted);font-size:12px}
+.tile b{font-size:18px;font-weight:600}
+.utitle{font-weight:550;margin:18px 0 8px}
+table.um{width:100%;border-collapse:collapse;font-size:13px}
+table.um th{text-align:left;color:var(--muted);font-weight:500;padding:6px 8px;border-bottom:1px solid var(--line)}
+table.um td{padding:7px 8px;border-bottom:1px solid var(--line)}
+table.um .n{text-align:right;font-variant-numeric:tabular-nums}
+.udays{display:flex;align-items:flex-end;gap:3px;height:70px;margin-top:6px}
+.udays div{flex:1;background:var(--accent);opacity:.8;border-radius:3px 3px 0 0;min-height:2px}
+.udays div.z{background:var(--line);opacity:1}
+.udays div:hover{opacity:1}
+.srow{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:16px 0;border-bottom:1px solid var(--line)}
+.srow b{font-weight:550}
+.srow p{margin:3px 0 0;color:var(--muted);font-size:13px;max-width:420px}
+.seg{display:flex;background:var(--bg);border-radius:10px;padding:3px;gap:2px;flex:none}
+.seg button{border:0;background:none;padding:6px 12px;border-radius:8px;color:var(--muted);font-size:13px}
+.seg button.act{background:var(--panel);color:var(--text);box-shadow:0 0 0 1px var(--line)}
+.sw{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end;max-width:360px}
+.dot{width:26px;height:26px;border-radius:50%;border:2px solid transparent;padding:0;cursor:pointer;box-shadow:inset 0 0 0 2px var(--panel)}
+.dot.act{border-color:var(--text)}
+.custom{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.custom input{width:30px;height:26px;border:0;background:none;padding:0;cursor:pointer}
+main{flex:1;display:flex;flex-direction:column;min-width:0}
+#log{flex:1;overflow:auto;padding:20px 0}
+.msg{max-width:820px;margin:0 auto;padding:6px 22px}
+.msg .who{font-size:12px;color:var(--muted);margin-bottom:2px}
+.msg.user{display:flex;flex-direction:column;align-items:flex-end}
+.msg.user .who{display:none}
+.msg.user .body{background:var(--user);padding:8px 14px;border-radius:14px;display:inline-block;max-width:85%;white-space:pre-wrap}
+.body p{margin:.4em 0}
+.body pre{background:var(--code);color:var(--code-fg);padding:12px;border-radius:10px;overflow:auto;font:13px/1.45 ui-monospace,Menlo,Consolas,monospace}
+.body code{font:13px ui-monospace,Menlo,Consolas,monospace;background:var(--side);padding:1px 5px;border-radius:5px}
+.body pre code{background:none;padding:0}
+details.think{color:var(--muted);font-size:13px;margin:4px 0}
+details.think div{white-space:pre-wrap;border-left:2px solid var(--line);padding-left:10px;margin-top:4px}
+.err{color:var(--danger)}
+.empty{max-width:820px;margin:12vh auto 0;padding:0 22px;color:var(--muted);text-align:center}
+#login{position:fixed;inset:0;background:var(--bg);display:none;align-items:center;justify-content:center;z-index:10}
+#login.on{display:flex}
+#login .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:32px;max-width:420px;text-align:center}
+#login h1{margin:0 0 6px;font-size:22px}
+#login p{color:var(--muted);margin:6px 0 20px}
+#login button{border:0;background:var(--accent);color:var(--accent-fg);padding:11px 22px;border-radius:10px;font-weight:600}
+#login button:disabled{opacity:.6;cursor:wait}
+.call{margin:6px 0;border:1px solid var(--line);border-radius:10px;background:var(--panel);font-size:13px}
+.call>summary{padding:6px 10px;cursor:pointer;display:flex;gap:8px;align-items:center;list-style:none}
+.call>summary::-webkit-details-marker{display:none}
+.call .ttl{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,Menlo,Consolas,monospace}
+.call .st{font-size:12px;color:var(--muted)}
+.call.error{border-color:var(--danger)}.call.error .st{color:var(--danger)}
+.call.approval{border-color:var(--accent)}
+.call pre{margin:0;padding:10px 12px;background:var(--code);color:var(--code-fg);border-radius:0 0 10px 10px;max-height:320px;overflow:auto;font:12px/1.45 ui-monospace,Menlo,Consolas,monospace}
+.call pre code{background:none;padding:0}
+.call .btns{display:flex;gap:8px;padding:8px 10px;border-top:1px solid var(--line)}
+.call .btns button{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:5px 12px}
+.call .btns button[data-act=allow]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.call .btns button[data-act=deny]:hover{border-color:var(--danger);color:var(--danger)}
+.overlay{position:fixed;inset:0;background:#0006;display:none;align-items:center;justify-content:center;z-index:9}
+.overlay.on{display:flex}
+.pcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;width:min(560px,92vw);display:flex;flex-direction:column;gap:10px}
+.pcard h3{margin:0}
+.pcard input{font:13px ui-monospace,Menlo,Consolas,monospace;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+#pList{height:300px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.pi{padding:6px 10px;cursor:pointer}.pi:hover{background:var(--side)}
+.prow{display:flex;gap:8px;justify-content:flex-end}
+.prow button{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:7px 14px}
+.prow button.ok{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:600}
+.msg{max-width:780px}
+.hello{max-width:780px;margin:0 auto;padding:36px 22px 0;font-size:22px;font-weight:500;display:flex;gap:10px;align-items:center}
+.hello i{color:var(--accent);font-style:normal}
+.hint{max-width:780px;margin:8px auto;padding:0 22px;color:var(--muted)}
+.composer{width:100%;max-width:780px;margin:0 auto;padding:0 22px 14px}
+.chips{display:flex;gap:6px;margin-bottom:8px}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:13px;border:0;background:var(--panel);border-radius:8px;padding:5px 10px;max-width:260px;color:var(--muted)}
+.chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip:hover{color:var(--text)}
+.chip.on{color:var(--accent)}
+.chip svg,.send svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.menuwrap{position:relative}
+.menu{position:absolute;bottom:calc(100% + 6px);left:0;min-width:200px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:4px;display:none;box-shadow:0 8px 28px #0004;z-index:5}
+.menu.on{display:block}
+.menu.r{left:auto;right:0}
+#modelMenu{min-width:260px;max-height:min(55vh,420px);overflow:auto}
+#permMenu{min-width:280px}
+.menu .item small.d{display:block;margin:2px 0 0;font-size:12px;white-space:normal}
+.plainbtn{display:inline-flex;align-items:center;gap:4px;border:0;background:none;color:var(--muted);font:inherit;font-size:13px;padding:4px 6px;border-radius:6px;max-width:260px}
+.plainbtn:hover{color:var(--text);background:var(--panel)}
+.plainbtn span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.plainbtn svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+#folderMenu{min-width:270px;max-width:380px}
+.menu .lbl{color:var(--muted);font-size:12px;padding:8px 10px 3px;display:block}
+.menu hr{border:0;border-top:1px solid var(--line);margin:4px 2px}
+.menu .item small{color:var(--muted);margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.menu .item span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.menu .item span.ck{color:var(--accent)}
+.menu div{display:flex;justify-content:space-between;gap:16px;padding:7px 10px;border-radius:6px;font-size:13px}
+.menu div.item{cursor:pointer}.menu div.item:hover{background:var(--side)}
+.menu div.off{color:var(--muted);opacity:.7}
+form{display:flex;align-items:flex-end;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:8px 8px 8px 14px}
+form:focus-within{border-color:var(--accent)}
+textarea{flex:1;resize:none;border:0;outline:0;background:transparent;font:inherit;color:var(--text);padding:5px 0;max-height:200px}
+.send{border:0;border-radius:8px;background:none;color:var(--muted);width:32px;height:32px;display:grid;place-items:center;flex:none}
+.send:hover{color:var(--accent)}
+.send.stop{color:var(--danger)}
+.bar{display:flex;align-items:center;margin-top:6px;font-size:13px}
+.bar .sp{flex:1}
+select.plain{-webkit-appearance:none;appearance:none;font:inherit;font-size:13px;color:var(--muted);background:transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238d8d92' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 4px center/12px;border:0;border-radius:6px;padding:4px 22px 4px 6px;max-width:260px;cursor:pointer}
+select.plain:hover,select.plain:focus{color:var(--text);outline:0}
+select.plain option{background:var(--panel);color:var(--text)}
+.grp{display:flex;align-items:center;padding:14px 10px 4px 10px;font-size:12px;color:var(--muted)}
+.grp .sp{flex:1}
+.gbtn{border:0;background:none;color:var(--muted);padding:4px;border-radius:6px;display:grid;place-items:center}
+.gbtn:hover{color:var(--accent);background:var(--panel)}
+.gbtn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.scard{width:min(620px,92vw);align-self:flex-start;margin-top:12vh}
+#sq{font:inherit;font-size:15px;padding:9px 12px}
+#sres{max-height:52vh;overflow:auto;display:flex;flex-direction:column;gap:2px}
+.sr{padding:8px 10px;border-radius:8px;cursor:pointer}
+.sr.act,.sr:hover{background:var(--side)}
+.sr b{display:block;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sr small{display:block;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sr mark{background:#e8b93a55;color:inherit;border-radius:3px}
+.snone{padding:14px 10px;color:var(--muted)}
+main{position:relative}
+.frow{display:flex;align-items:center;gap:8px;margin:8px 0;cursor:pointer;font-size:14px;color:var(--muted)}
+.frow .fn{color:var(--text)}.frow:hover .fn{text-decoration:underline}
+.plus,.minus{border-radius:4px;padding:0 6px;font-size:12px}
+.plus{color:#3fb950;background:#3fb95022}.minus{color:#f85149;background:#f8514922}
+.chev{opacity:.6}
+.status{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:14px;margin:8px 0}
+.spin{display:inline-flex;gap:3px;--p:0}
+.spin i{width:5px;height:5px;border-radius:50%;background:var(--accent);animation:bl 1s infinite ease-in-out;animation-delay:calc(-1ms * var(--p) + var(--d,0ms))}
+.spin i:nth-child(2){--d:-160ms}.spin i:nth-child(3){--d:-320ms}
+@keyframes bl{0%,100%{opacity:.25;transform:scale(.8)}50%{opacity:1;transform:scale(1.15)}}
+.flink{color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent)}
+#topbar{height:40px;flex:none;display:flex;align-items:center;gap:12px;padding:0 10px 0 22px}
+.shell #topbar{padding-right:56px}      /* the native window's close button overlays the far right of this bar */
+.ttl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:var(--muted)}
+#tools{display:flex;gap:2px;flex:none}
+.tbtn{border:0;background:none;color:var(--muted);padding:0;width:30px;height:30px;border-radius:8px;display:grid;place-items:center}
+.tbtn svg{display:block}   /* inline svg sits on the text baseline and leaves a gap underneath */
+.tbtn:hover{color:var(--text);background:var(--panel)}
+.tbtn.on{color:var(--accent);background:color-mix(in srgb,var(--accent) 20%,transparent)}
+#content{flex:1;display:flex;flex-direction:column;min-width:0;height:100%}
+#work{flex:1;display:flex;min-height:0}
+.tbtn svg,#panel svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#panel{display:none;position:relative;width:var(--pw,min(50vw,780px));min-width:320px;max-width:calc(100vw - 620px);flex:none;border-left:1px solid var(--line);background:var(--panel);flex-direction:column}
+#hsplit{position:absolute;left:-4px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:4}
+#hsplit:hover,#hsplit.drag{background:linear-gradient(to right,transparent 3px,var(--accent) 3px,var(--accent) 5px,transparent 5px)}
+#pfile{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0}
+#vsplit{height:8px;margin:-4px 0;flex:none;cursor:row-resize;position:relative;z-index:3}
+#vsplit:hover,#vsplit.drag{background:linear-gradient(to bottom,transparent 3px,var(--accent) 3px,var(--accent) 5px,transparent 5px)}
+#pterm{display:flex;flex-direction:column;min-height:0;border-top:1px solid var(--line)}
+.thead{display:flex;align-items:center;padding:4px 10px 4px 14px;font-size:13px;color:var(--muted)}
+.thead .sp{flex:1}
+#tbody{flex:1;min-height:0;background:var(--code);padding:6px 0 0 10px;overflow:hidden}
+body.dragging{user-select:none}
+body.dragging iframe,body.dragging #tbody{pointer-events:none}
+#panel.on{display:flex}
+#panel button{border:0;background:none;color:var(--muted);padding:4px 7px;border-radius:6px}
+#panel button:hover{color:var(--text);background:var(--side)}
+.ptabs{display:flex;align-items:center;gap:4px;height:40px;box-sizing:border-box;padding:0 10px;overflow:hidden;flex:none}
+.ptabs .sp,.psub .sp{flex:1}
+.tab{display:flex;align-items:center;gap:8px;padding:4px 10px;border-radius:8px;font-size:13px;color:var(--muted);cursor:pointer;max-width:200px}
+.tab span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tab.act{background:var(--bg);color:var(--text)}
+.tab b{font-weight:400;opacity:.6}.tab b:hover{opacity:1}
+.psub{display:flex;align-items:center;padding:6px 14px;font-size:13px;color:var(--muted);border-bottom:1px solid var(--line)}
+.pbody{flex:1;overflow:auto;background:var(--bg);min-height:0}
+.code{display:flex;min-width:max-content}
+.code pre{margin:0;font:12.5px/1.55 ui-monospace,Menlo,Consolas,monospace;padding:12px 0}
+.gut{color:var(--muted);text-align:right;padding:12px 12px 12px 14px!important;user-select:none;flex:none;opacity:.7}
+.src{padding:12px 16px 12px 4px!important;flex:1}
+.src code{font:inherit;background:none;padding:0}
+.pbody iframe{border:0;width:100%;height:100%;background:#fff;display:block}
+.pmsg{padding:20px;color:var(--muted)}
+.tree{padding:8px}
+.hljs-keyword,.hljs-selector-tag,.hljs-literal,.hljs-built_in,.hljs-doctag,.hljs-meta .hljs-keyword{color:var(--h-kw)}
+.hljs-string,.hljs-regexp,.hljs-symbol,.hljs-addition{color:var(--h-str)}
+.hljs-number,.hljs-attribute,.hljs-variable,.hljs-template-variable,.hljs-selector-class,.hljs-selector-id{color:var(--h-num)}
+.hljs-comment,.hljs-quote{color:var(--h-com);font-style:italic}
+.hljs-title,.hljs-section,.hljs-function .hljs-title{color:var(--h-fn)}
+.hljs-tag,.hljs-name,.hljs-attr,.hljs-deletion,.hljs-property,.hljs-params{color:var(--h-tag)}
+.hljs-meta{color:var(--h-com)}
+@media(max-width:700px){aside{display:none}}
+</style>
+</head>
+<body>
+<aside>
+  <div class="brand">EDU-KI Code</div>
+  <button class="new" id="new">+ Neuer Chat</button>
+  <div id="chats"></div>
+  <div class="me">
+    <div class="umenu" id="userMenu">
+      <div class="ue" id="uemail"></div>
+      <div class="ui" id="mSettings"><span>Einstellungen</span><kbd>Strg+,</kbd></div>
+      <div class="ui" id="mUsage"><span>Nutzung</span></div>
+      <hr>
+      <div class="ui" id="logout">Abmelden</div>
+    </div>
+    <button id="meBtn" type="button"><span class="av" id="av"></span><span id="who"></span></button>
+  </div>
+</aside>
+<div id="content">
+  <div id="topbar"><div class="ttl" id="ttl"></div>
+  <div id="tools">
+    <button class="tbtn" id="ttoggle" type="button" title="Terminal"><svg viewBox="0 0 24 24"><path d="M4 17l6-6-6-6M12 19h8"/></svg></button>
+    <button class="tbtn" id="ptoggle" type="button" title="Dateien" style="display:none"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M14 4v16"/></svg></button>
+  </div>
+  </div>
+<div id="work">
+<main>
+  <div id="log"></div>
+  <div class="composer">
+    <div class="chips">
+      <div class="menuwrap">
+        <button class="chip" id="mode" type="button"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></svg><span>Lokal</span></button>
+        <div class="menu" id="modeMenu">
+          <div class="item" data-mode="local"><span>Lokal</span><span>✓</span></div>
+          <div class="off"><span>SSH</span><span>bald</span></div>
+        </div>
+      </div>
+      <div class="menuwrap">
+        <button class="chip" id="folder" type="button"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>Kein Ordner</span></button>
+        <div class="menu" id="folderMenu"></div>
+      </div>
+    </div>
+    <form id="form">
+      <textarea id="input" rows="1" placeholder="Aufgabe beschreiben oder Frage stellen"></textarea>
+      <button class="send" id="send" type="submit"></button>
+    </form>
+    <div class="bar">
+      <div class="menuwrap" id="permWrap" style="display:none">
+        <button class="plainbtn" id="permBtn" type="button" title="Rückfragen"><span></span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="menu" id="permMenu"></div>
+        <select id="perm" hidden><option value="ask">Mit Rückfrage</option><option value="auto">Auto</option></select>
+      </div>
+      <span class="sp"></span>
+      <div class="menuwrap">
+        <button class="plainbtn" id="modelBtn" type="button" title="Modell"><span></span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="menu r" id="modelMenu"></div>
+        <select id="model" hidden></select>
+      </div>
+    </div>
+  </div>
+</main>
+<section id="panel">
+  <div id="hsplit" title="Ziehen zum Anpassen (Doppelklick: zurücksetzen)"></div>
+  <div id="pfile"></div>
+  <div id="vsplit"></div>
+  <div id="pterm"><div class="thead"><span>Terminal</span><span class="sp"></span><button id="tclose" title="Schließen">✕</button></div><div id="tbody"></div></div>
+</section>
+</div>
+</div>
+<div class="overlay" id="settings"><div class="sbig">
+  <div class="snav"><h4>Einstellungen</h4><div class="act" data-page="appearance">Darstellung</div><div data-page="usage">Nutzung</div></div>
+  <div class="scont" id="scont"></div>
+  <button class="sx" id="sclose" title="Schließen">✕</button>
+</div></div>
+<div class="overlay" id="search"><div class="pcard scard">
+  <input id="sq" placeholder="Chats durchsuchen…" autocomplete="off" spellcheck="false">
+  <div id="sres"></div>
+</div></div>
+<div class="overlay" id="picker"><div class="pcard">
+  <h3>Arbeitsordner wählen</h3>
+  <input id="pPath" spellcheck="false">
+  <div id="pList"></div>
+  <div class="prow"><button id="pNone">Ohne Ordner</button><button id="pCancel">Abbrechen</button><button class="ok" id="pOk">Diesen Ordner wählen</button></div>
+</div></div>
+<div id="login"><div class="card">
+  <h1>EDU-KI-RLP</h1>
+  <p>Melde dich mit deinem Hochschul-Login (Shibboleth) an. Es öffnet sich ein Browserfenster; deine Zugangsdaten gehen nur an deine Hochschule.</p>
+  <button id="loginBtn">Mit Hochschul-Login anmelden</button>
+  <p id="loginMsg" style="margin-top:14px;font-size:13px"></p>
+</div></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const OW = "/ow/";
+const uuid = () => crypto.randomUUID();
+const now = () => Math.floor(Date.now() / 1000);
+const esc = s => s.replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+
+let chat = null;          // {id|null, title, model, history:{messages,currentId}, updated_at}
+let streaming = null;     // AbortController while a reply is running
+let list = [];
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, opts);
+  if (r.status === 401) { showLogin(); throw new Error("not logged in"); }
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return r.json();
+}
+const json = (method, body) => ({method, headers: {"content-type": "application/json"}, body: JSON.stringify(body)});
+
+// ---- login -------------------------------------------------------------
+function showLogin(msg = "") { $("login").classList.add("on"); $("loginMsg").textContent = msg; }
+$("loginBtn").onclick = async () => {
+  $("loginBtn").disabled = true;
+  $("loginMsg").textContent = "Browserfenster geöffnet – bitte dort anmelden…";
+  try {
+    await api("/app/login", {method: "POST"});
+    $("login").classList.remove("on");
+    await boot();
+  } catch (e) { $("loginMsg").textContent = "Anmeldung fehlgeschlagen oder abgelaufen. Bitte erneut versuchen."; }
+  $("loginBtn").disabled = false;
+};
+$("logout").onclick = async () => { await fetch("/app/logout", {method: "POST"}); chat = null; showLogin(); };
+
+// ---- models / chat list ------------------------------------------------
+async function loadModels() {
+  const {data} = await api(OW + "models");
+  const sel = $("model"), keep = localStorage.model;
+  sel.innerHTML = data.map(m => `<option value="${esc(m.id)}">${esc(m.name || m.id)}</option>`).join("");
+  sel.value = data.some(m => m.id === keep) ? keep : (data.find(m => /qwen|deepseek/.test(m.id)) || data[0]).id;
+}
+$("model").onchange = () => { localStorage.model = $("model").value; if (chat) chat.model = $("model").value; };
+
+async function loadList() {
+  const all = [];
+  for (let pg = 1; pg <= 20; pg++) {                      // every page, not just the first
+    const r = await api(OW + `v1/chats/?page=${pg}`);
+    if (!r.length) break;
+    all.push(...r);
+  }
+  list = all; renderList();
+}
+const SEARCH_ICON = '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
+function renderList() {
+  const box = $("chats"); box.innerHTML = "";
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const yest = new Date(today); yest.setDate(yest.getDate() - 1);
+  const groups = [["Heute", []], ["Gestern", []], ["Älter", []]];
+  for (const c of list) { const ms = c.updated_at * 1000; groups[ms >= today ? 0 : ms >= yest ? 1 : 2][1].push(c); }
+  const header = (label, withSearch) => {
+    const h = document.createElement("div"); h.className = "grp";
+    h.innerHTML = `<span>${label}</span><span class="sp"></span>` + (withSearch ? `<button class="gbtn" title="Chats durchsuchen (Strg+K)">${SEARCH_ICON}</button>` : "");
+    if (withSearch) h.querySelector("button").onclick = openSearch;
+    box.append(h);
+  };
+  let any = false;
+  for (const [label, items] of groups) {
+    if (!items.length) continue;
+    header(label, !any); any = true;
+    for (const c of items) {
+      const el = document.createElement("div");
+      el.className = "chat" + (chat && chat.id === c.id ? " active" : "");
+      el.innerHTML = `<span>${esc(c.title || "Chat")}</span><button title="Löschen">✕</button>`;
+      el.onclick = () => openChat(c.id);
+      el.querySelector("button").onclick = async e => {
+        e.stopPropagation();
+        if (!confirm(`„${c.title}“ löschen?`)) return;
+        await api(OW + `v1/chats/${c.id}`, {method: "DELETE"});
+        if (chat && chat.id === c.id) newChat();
+        loadList();
+      };
+      box.append(el);
+    }
+  }
+  if (!any) header("Heute", true);
+}
+
+// ---- user menu + settings ------------------------------------------------
+$("meBtn").onclick = e => { e.stopPropagation(); $("userMenu").classList.toggle("on"); };
+document.addEventListener("click", () => $("userMenu").classList.remove("on"));
+let settingsPage = "appearance";
+function openSettings(page) { settingsPage = typeof page === "string" ? page : "appearance"; $("userMenu").classList.remove("on"); renderSettings(); $("settings").classList.add("on"); }
+function closeSettings() { $("settings").classList.remove("on"); }
+$("mSettings").onclick = () => openSettings("appearance");
+$("mUsage").onclick = () => openSettings("usage");
+document.querySelector(".snav").onclick = e => { const d = e.target.closest("[data-page]"); if (d) { settingsPage = d.dataset.page; renderSettings(); } };
+$("sclose").onclick = closeSettings;
+$("settings").onclick = e => { if (e.target === $("settings")) closeSettings(); };
+const MODES = [["auto", "System"], ["light", "Hell"], ["dark", "Dunkel"], ["black", "Schwarz (OLED)"]];
+function setAppearance(patch) {
+  const a = {...loadAppearance(), ...patch};
+  try { localStorage.appearance = JSON.stringify(a); } catch {}
+  applyAppearance(a); renderSettings();
+}
+function renderSettings() {
+  document.querySelectorAll(".snav [data-page]").forEach(d => d.classList.toggle("act", d.dataset.page === settingsPage));
+  if (settingsPage === "usage") renderUsage(); else renderAppearance();
+}
+const fmtN = n => Math.round(n).toLocaleString("de-DE");
+const fmtCost = c => c === 0 ? "$0" : c < 0.01 ? "$" + c.toFixed(4) : "$" + c.toFixed(2);
+async function renderUsage() {
+  const box = $("scont"); box.innerHTML = '<h2>Nutzung</h2><div class="pmsg" id="uload">Lädt…</div>';
+  const still = () => settingsPage === "usage";
+  let u;
+  try {
+    u = await api("/app/usage");
+    if (!u.backfilled) {                          // one-off: pull figures from earlier chats
+      if (still()) $("uload").textContent = "Bisherige Chats werden einmalig ausgewertet…";
+      await api("/app/usage/backfill", {method: "POST"});
+      u = await api("/app/usage");
+    }
+  } catch (e) { if (still()) box.innerHTML += `<div class="pmsg err">${esc(String(e.message))}</div>`; return; }
+  const bud = await api("/app/budget").catch(() => null);
+  if (!still()) return;                           // user switched page meanwhile
+  const pct = bud && bud.percent != null ? Math.max(0, Math.min(100, bud.percent)) : null;
+  const when = bud && bud.at ? new Date(bud.at * 1000).toLocaleString("de-DE", {dateStyle: "medium", timeStyle: "short"}) : "";
+  const budget = pct === null
+    ? `<div class="ucard"><div class="uhead"><b>Budget diesen Monat</b></div><p class="umuted" style="margin:0">Noch keine Angabe. Der Server meldet deinen Budgetstand bei Antworten kostenpflichtiger Modelle (z. B. Claude Sonnet 5, GPT 5.6). Sobald du eines nutzt und in der Open-WebUI-Weboberfläche chattest, erscheint er hier.</p></div>`
+    : `<div class="ucard"><div class="uhead"><b>Budget diesen Monat</b><span class="pct">${pct.toLocaleString("de-DE")} %</span></div>
+        <div class="ubar${pct >= 90 ? " crit" : pct >= 70 ? " warn" : ""}"><i style="width:${pct}%"></i></div>
+        <p class="umuted">Zuletzt vom Server gemeldet: ${esc(when)}. Der Server meldet den Stand nur bei kostenpflichtigen Modellen – der Wert kann daher älter sein als deine letzte Anfrage.</p></div>`;
+  const m = u.month, t = u.total, max = Math.max(1, ...u.days.map(d => d.tokens));
+  const monthName = new Date(m.label + "-01T12:00").toLocaleDateString("de-DE", {month: "long", year: "numeric"});
+  const tile = (l, v) => `<div class="tile"><small>${l}</small><b>${v}</b></div>`;
+  const rows = m.models.length ? m.models.map(x => `<tr><td>${esc(x.model)}</td><td class="n">${fmtN(x.requests)}</td><td class="n">${fmtN(x.in)}</td><td class="n">${fmtN(x.out)}</td><td class="n">${fmtCost(x.cost)}</td></tr>`).join("")
+    : `<tr><td colspan="5" style="color:var(--muted)">Noch keine Anfragen in diesem Monat.</td></tr>`;
+  box.innerHTML = `<h2>Nutzung</h2>${budget}
+    <div class="utitle">${esc(monthName)}</div>
+    <div class="tiles">${tile("Anfragen", fmtN(m.requests))}${tile("Eingabe-Token", fmtN(m.in))}${tile("Ausgabe-Token", fmtN(m.out))}${tile("Kosten", fmtCost(m.cost))}</div>
+    <table class="um"><tr><th>Modell</th><th class="n">Anfragen</th><th class="n">Eingabe</th><th class="n">Ausgabe</th><th class="n">Kosten</th></tr>${rows}</table>
+    <div class="utitle">Letzte 30 Tage (Token pro Tag)</div>
+    <div class="udays">${u.days.map(d => `<div class="${d.tokens ? "" : "z"}" style="height:${d.tokens ? Math.max(4, d.tokens / max * 100) : 3}%" title="${new Date(d.date + "T12:00").toLocaleDateString("de-DE")}: ${fmtN(d.tokens)} Token"></div>`).join("")}</div>
+    <p class="umuted">Insgesamt erfasst: ${fmtN(t.requests)} Anfragen, ${fmtN(t.in + t.out)} Token, ${fmtCost(t.cost)}. Erfasst werden Anfragen über diese App und opencode seit ${new Date(u.since * 1000).toLocaleDateString("de-DE")}; frühere Chats wurden einmalig aus deinem Open-WebUI-Verlauf übernommen. Chats, die du direkt in der Weboberfläche führst, werden nicht live erfasst. Kosten laut Abrechnung des Servers (USD).</p>`;
+}
+function renderAppearance() {
+  const a = loadAppearance(), dark = resolvedMode(a.mode) !== "light";
+  const custom = !ACCENTS[a.accent];
+  $("scont").innerHTML = `<h2>Darstellung</h2>
+    <div class="srow"><div><b>Farbschema</b><p>Hell, dunkel oder reines Schwarz für OLED-Displays. „System“ folgt der Einstellung deines Geräts.</p></div>
+      <div class="seg">${MODES.map(([k, l]) => `<button data-mode="${k}" class="${a.mode === k ? "act" : ""}">${l}</button>`).join("")}</div></div>
+    <div class="srow"><div><b>Akzentfarbe</b><p>Wird für Schaltflächen, Links und Hervorhebungen verwendet.</p></div>
+      <div class="sw">${Object.entries(ACCENTS).map(([k, v]) => `<button class="dot${a.accent === k ? " act" : ""}" data-acc="${k}" title="${v[2]}" style="background:${v[dark ? 1 : 0]}"></button>`).join("")}
+        <label class="custom" title="Eigene Farbe"><input type="color" id="accCustom" value="${custom ? a.accent : accentFor(a, dark)}">Eigene</label></div></div>`;
+  $("accCustom").oninput = e => { const a2 = {...loadAppearance(), accent: e.target.value}; try { localStorage.appearance = JSON.stringify(a2); } catch {} applyAppearance(a2); };
+  $("accCustom").onchange = () => renderSettings();
+}
+$("scont").onclick = e => {
+  const m = e.target.closest("[data-mode]"), c = e.target.closest("[data-acc]");
+  if (m) setAppearance({mode: m.dataset.mode}); else if (c) setAppearance({accent: c.dataset.acc});
+};
+window.onAppearance = () => {   // keep the terminal in step with the theme
+  if (typeof term !== "undefined" && term.t) term.t.options.theme = {background: getComputedStyle(document.documentElement).getPropertyValue("--code").trim(), foreground: "#e6edf3"};
+};
+
+// ---- search modal ----------------------------------------------------------
+let sHits = [], sIdx = 0, sSeq = 0, sTimer = null;
+function openSearch() { $("search").classList.add("on"); $("sq").value = ""; $("sq").focus(); runSearch(); }
+function closeSearch() { $("search").classList.remove("on"); }
+function mark(text, q) {
+  if (!q) return esc(text);
+  const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+  let out = "", last = 0, m;
+  while ((m = rx.exec(text))) { out += esc(text.slice(last, m.index)) + "<mark>" + esc(m[0]) + "</mark>"; last = m.index + m[0].length; if (!m[0]) rx.lastIndex++; }
+  return out + esc(text.slice(last));
+}
+async function runSearch() {
+  const q = $("sq").value.trim(), seq = ++sSeq;
+  let hits;
+  if (!q) hits = list.slice(0, 30);
+  else {
+    try { hits = await api(OW + `v1/chats/search?text=${enc(q)}`); }
+    catch { hits = list.filter(c => (c.title || "").toLowerCase().includes(q.toLowerCase())); }   // fall back to titles
+  }
+  if (seq !== sSeq) return;                              // a newer keystroke superseded this answer
+  sHits = hits; sIdx = 0; renderSearch(q);
+}
+function renderSearch(q) {
+  $("sres").innerHTML = sHits.length ? sHits.map((c, i) => {
+    const snip = q && c.snippet && c.snippet !== c.title ? `<small>${mark(c.snippet, q)}</small>` : "";
+    return `<div class="sr${i === sIdx ? " act" : ""}" data-i="${i}"><b>${mark(c.title || "Chat", q)}</b>${snip}</div>`;
+  }).join("") : `<div class="snone">Keine Treffer</div>`;
+  const a = $("sres").querySelector(".act"); if (a) a.scrollIntoView({block: "nearest"});
+}
+function pickHit(i) { const c = sHits[i]; if (c) { closeSearch(); openChat(c.id); } }
+$("sq").oninput = () => { clearTimeout(sTimer); sTimer = setTimeout(runSearch, 180); };
+$("sq").onkeydown = e => {
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault(); sIdx = Math.max(0, Math.min(sHits.length - 1, sIdx + (e.key === "ArrowDown" ? 1 : -1))); renderSearch($("sq").value.trim());
+  } else if (e.key === "Enter") { e.preventDefault(); pickHit(sIdx); }
+};
+$("sres").onclick = e => { const r = e.target.closest(".sr"); if (r) pickHit(+r.dataset.i); };
+$("search").onclick = e => { if (e.target === $("search")) closeSearch(); };
+document.addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("search").classList.contains("on") ? closeSearch() : openSearch(); }
+  else if ((e.ctrlKey || e.metaKey) && e.key === ",") { e.preventDefault(); openSettings(); }
+  else if (e.key === "Escape") { closeSearch(); closeSettings(); document.querySelectorAll(".menu.on, .umenu.on").forEach(m => m.classList.remove("on")); $("userMenu").classList.remove("on"); $("picker").classList.remove("on"); }
+});
+
+function newChat() {
+  if (streaming) streaming.abort();
+  chat = {id: null, title: "Neuer Chat", model: $("model").value, workdir: localStorage.workdir || null, perm: "ask", history: {messages: {}, currentId: null}, updated_at: 0};
+  resetPanel(); render(); loadList();
+}
+
+async function openChat(id) {
+  if (streaming) streaming.abort();
+  const c = await api(OW + `v1/chats/${id}`);
+  chat = {id, title: c.title, workdir: c.chat.workdir || null, perm: "ask", model: (c.chat.models || [])[0] || $("model").value,
+          history: c.chat.history || {messages: {}, currentId: null}, updated_at: c.updated_at, raw: c.chat};
+  if ([...$("model").options].some(o => o.value === chat.model)) $("model").value = chat.model;
+  addRecent(chat.workdir); resetPanel(); render(); loadList();
+}
+
+// ---- rendering ---------------------------------------------------------
+function branch() {          // linear path root -> currentId
+  const out = [], m = chat.history.messages;
+  for (let id = chat.history.currentId; id && m[id]; id = m[id].parentId) out.unshift(m[id]);
+  return out;
+}
+function md(text) {
+  const parts = text.split(/```/);
+  return parts.map((p, i) => {
+    if (i % 2) { const nl = p.indexOf("\n"); return `<pre><code>${esc(p.slice(nl + 1).replace(/\n$/, ""))}</code></pre>`; }
+    return esc(p).split(/\n{2,}/).map(par => `<p>${par.replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/\n/g, "<br>")}</p>`).join("");
+  }).join("");
+}
+const ARROW = '<svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+const STOP = '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg>';
+let userFirst = "";
+const openSet = new Set();
+const enc = encodeURIComponent;
+const norm = p => {   // folder-relative path: models sometimes send ./x or absolute paths
+  p = p.replace(/^\.\//, "");
+  const w = ((chat && chat.workdir) || "").replace(/\/$/, "");
+  return w && p.startsWith(w + "/") ? p.slice(w.length + 1) : p;
+};
+const base = p => p.split("/").pop();
+const ext = p => (p.includes(".") ? p.split(".").pop() : "").toLowerCase();
+let curIdx = new Map();
+
+function statusHtml(m) {
+  const s = m.steps && m.steps[m.steps.length - 1], c = s && s.calls && s.calls[s.calls.length - 1];
+  if (c && c.status === "approval") return `<div class="status">Wartet auf Freigabe</div>`;
+  const verbs = {write_file: "Erstelle", edit_file: "Ändere", bash: "Führe aus", read_file: "Lese", list_dir: "Lese", grep: "Suche", glob: "Suche"};
+  const v = c && (c.status === "running" || c.status === "pending") ? (verbs[c.name] || "Arbeite") : (s && s.content ? "Schreibe" : "Denke nach");
+  const t0 = m.started || Date.now();
+  return `<div class="status"><span class="spin" style="--p:${Date.now() % 1000}"><i></i><i></i><i></i></span>${v} <span class="tm" data-t="${t0}">${Math.floor((Date.now() - t0) / 1000)}s</span></div>`;
+}
+setInterval(() => document.querySelectorAll(".tm").forEach(e => { e.textContent = Math.floor((Date.now() - e.dataset.t) / 1000) + "s"; }), 1000);
+
+// files this chat has written/edited -> clickable names in the answer text
+function fileIndex() {
+  const idx = new Map();
+  for (const m of branch()) for (const s of m.steps || []) for (const c of s.calls || []) {
+    if ((c.name === "write_file" || c.name === "edit_file") && c.status === "done") {
+      try { const p = norm(JSON.parse(c.args).path); idx.set(p, p); idx.set(base(p), p); } catch {}
+    }
+  }
+  return idx;
+}
+function linkFiles(html) {
+  if (!curIdx.size || !chat.workdir) return html;
+  const names = [...curIdx.keys()].sort((a, b) => b.length - a.length).map(n => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const rx = new RegExp(`(^|[\\s(])(${names.join("|")})(?=[\\s.,;:)!?]|$)`, "g");
+  return html.split(/(<pre[\s\S]*?<\/pre>|<[^>]+>)/).map(part => part.startsWith("<") ? part
+    : part.replace(rx, (_, pre, name) => `${pre}<a href="#" class="flink" data-file="${esc(curIdx.get(name))}">${name}</a>`)).join("");
+}
+
+// ---- file panel (code view + HTML preview) ------------------------------
+const EYE = '<svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const CODE = '<svg viewBox="0 0 24 24"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5"/></svg>';
+const LANG = {py: "python", js: "javascript", mjs: "javascript", ts: "typescript", html: "xml", htm: "xml", xml: "xml", svg: "xml", css: "css", json: "json",
+  md: "markdown", sh: "bash", java: "java", c: "c", h: "c", cpp: "cpp", rs: "rust", go: "go", yml: "yaml", yaml: "yaml", sql: "sql", php: "php", rb: "ruby", kt: "kotlin", toml: "ini", ini: "ini", cs: "csharp"};
+const PREVIEW = new Set(["html", "htm", "svg"]);
+const panel = {open: false, tabs: [], active: null, dir: ".", entries: null, pid: null};
+
+async function ensurePreview() {   // folder files are served so relative css/js/images work in the preview
+  if (panel.pidLoading) return;
+  panel.pidLoading = true;
+  try { panel.pid = (await api("/app/preview", json("POST", {workdir: chat.workdir}))).id; } catch {}
+  panel.pidLoading = false; renderPanel();
+}
+function resetPanel() { panel.pid = null; panel.open = false; panel.tabs = []; panel.active = null; panel.dir = "."; panel.entries = null; renderPanel(); syncTerm(); }
+async function openFile(path) {
+  let t = panel.tabs.find(x => x.path === path);
+  if (!t) panel.tabs.push(t = {path, content: null, mode: "code"});
+  panel.active = path; panel.open = true; renderPanel();
+  await loadTab(t);
+}
+async function loadTab(t) {
+  try { t.content = (await api(`/app/file?workdir=${enc(chat.workdir)}&path=${enc(t.path)}`)).content; t.error = null; t.ver = Date.now(); }
+  catch (e) { t.error = String(e.message); }
+  renderPanel();
+}
+const refreshTab = path => { const t = panel.tabs.find(x => x.path === path); if (t) loadTab(t); };
+async function loadDir(dir) {
+  try { panel.entries = (await api(`/app/ls?workdir=${enc(chat.workdir)}&path=${enc(dir)}`)).entries; panel.dir = dir; }
+  catch { panel.entries = []; }
+  renderPanel();
+}
+function closeTab(path) {
+  panel.tabs = panel.tabs.filter(x => x.path !== path);
+  if (panel.active === path) panel.active = panel.tabs.length ? panel.tabs[panel.tabs.length - 1].path : null;
+  if (!panel.tabs.length) loadDir(panel.dir); else renderPanel();
+}
+function highlight(t) {
+  const l = LANG[ext(t.path)];
+  if (window.hljs && l && t.content.length < 300000) { try { return hljs.highlight(t.content, {language: l, ignoreIllegals: true}).value; } catch {} }
+  return esc(t.content);
+}
+function renderPanel() {
+  const el = $("pfile"); layout();
+  if (!panel.open) return;
+  const t = panel.tabs.find(x => x.path === panel.active);
+  const tabs = panel.tabs.map(x => `<div class="tab${x === t ? " act" : ""}" data-tab="${esc(x.path)}"><span>${esc(base(x.path))}</span><b data-close="${esc(x.path)}">✕</b></div>`).join("");
+  let sub = "", body = "";
+  if (t) {
+    const code = t.mode === "code";
+    sub = `<div class="psub"><span>${esc(t.path)}</span><span class="sp"></span>${PREVIEW.has(ext(t.path)) ? `<button data-mode="${code ? "preview" : "code"}" title="${code ? "Vorschau" : "Code"}">${code ? EYE : CODE}</button>` : ""}</div>`;
+    if (t.error) body = `<div class="pmsg err">${esc(t.error)}</div>`;
+    else if (t.content === null) body = `<div class="pmsg">Lädt…</div>`;
+    else if (!code && !panel.pid) { body = `<div class="pmsg">Lädt…</div>`; ensurePreview(); }
+    else if (!code) body = `<iframe sandbox="allow-scripts allow-forms" title="Vorschau"></iframe>`;
+    else body = `<div class="code"><pre class="gut">${Array.from({length: t.content.split("\n").length}, (_, i) => i + 1).join("\n")}</pre><pre class="src"><code>${highlight(t)}</code></pre></div>`;
+  } else {
+    const up = panel.dir !== "." ? `<div class="pi" data-dir="${esc(panel.dir.split("/").slice(0, -1).join("/") || ".")}">⬑ ..</div>` : "";
+    body = `<div class="tree">${up}${(panel.entries || []).map(e => {
+      const p = panel.dir === "." ? e.name : panel.dir + "/" + e.name;
+      return `<div class="pi" ${e.dir ? "data-dir" : "data-file"}="${esc(p)}">${e.dir ? "📁" : "▫"} ${esc(e.name)}</div>`;
+    }).join("")}</div>`;
+  }
+  el.innerHTML = `<div class="ptabs">${tabs}<span class="sp"></span></div>${sub}<div class="pbody">${body}</div>`;
+  const f = el.querySelector("iframe");   // sandboxed, no same-origin: model-written HTML cannot reach the local API
+  if (f) f.src = `/app/preview/${panel.pid}/${t.path.split("/").map(enc).join("/")}?v=${t.ver || 0}`;
+}
+$("panel").onclick = e => {
+  const g = a => e.target.closest(`[${a}]`); let x;
+  if ((x = g("data-close"))) { e.stopPropagation(); closeTab(x.dataset.close); }
+  else if ((x = g("data-tab"))) { panel.active = x.dataset.tab; renderPanel(); }
+  else if (g("data-pclose")) { panel.open = false; renderPanel(); }
+  else if ((x = g("data-mode"))) { panel.tabs.find(t => t.path === panel.active).mode = x.dataset.mode; renderPanel(); }
+  else if ((x = g("data-dir"))) loadDir(x.dataset.dir);
+  else if ((x = g("data-file"))) openFile(x.dataset.file);
+};
+// The native window overlays a drag strip across the top. It must not cover the page's buttons, so the
+// page tells it where its tool buttons start; everything left of that is draggable.
+function reportDrag() {
+  try {
+    const r = $("tools").getBoundingClientRect();
+    window.webkit.messageHandlers.shell.postMessage(JSON.stringify({dragEnd: Math.max(0, Math.floor(r.left) - 8)}));
+  } catch {}
+}
+addEventListener("resize", reportDrag);
+
+// ---- terminal tile + resizing --------------------------------------------
+const term = {open: false, t: null, fit: null, ws: null, workdir: "", exited: false};
+let termH = +localStorage.termH || 300;
+function layout() {
+  const f = panel.open, t = term.open;
+  $("panel").classList.toggle("on", f || t); $("panel").classList.toggle("hasfile", f);
+  document.documentElement.classList.toggle("panelopen", f || t);
+  $("pfile").style.display = f ? "" : "none";
+  $("pterm").style.display = t ? "" : "none";
+  $("pterm").style.flex = f ? `0 0 ${termH}px` : "1";     // alone it fills the column; with files it tiles beneath
+  $("vsplit").style.display = f && t ? "" : "none";
+  $("ptoggle").classList.toggle("on", f); $("ttoggle").classList.toggle("on", t);
+  fitTerm(); reportDrag();
+}
+function startTerm() {
+  if (!window.Terminal) return;
+  const wd = chat.workdir || "";
+  if (term.t && term.workdir !== wd) disposeTerm();
+  if (!term.t) {
+    term.t = new Terminal({fontSize: 13, cursorBlink: true, fontFamily: "ui-monospace, Menlo, Consolas, monospace",
+      theme: {background: getComputedStyle(document.documentElement).getPropertyValue("--code").trim() || "#0d0d0e", foreground: "#e6edf3"}});
+    term.fit = new FitAddon.FitAddon(); term.t.loadAddon(term.fit);
+    term.t.open($("tbody")); term.workdir = wd;
+    term.t.onData(d => {
+      if (term.exited) return connectTerm();                // any key after the shell ended starts a new one
+      if (term.ws && term.ws.readyState === 1) term.ws.send(new TextEncoder().encode(d));
+    });
+    new ResizeObserver(fitTerm).observe($("tbody"));
+    connectTerm();
+  }
+  setTimeout(() => { fitTerm(); term.t && term.t.focus(); }, 0);
+}
+function connectTerm() {
+  term.exited = false; term.t.reset(); fitTerm();
+  const ws = term.ws = new WebSocket(`ws://${location.host}/app/term?workdir=${enc(term.workdir)}&cols=${term.t.cols}&rows=${term.t.rows}`);
+  ws.binaryType = "arraybuffer";
+  ws.onmessage = e => term.t && term.t.write(new Uint8Array(e.data));
+  ws.onclose = () => { if (term.ws === ws && term.t) { term.exited = true; term.t.write("\r\n\x1b[2m[Sitzung beendet – beliebige Taste für neue Shell]\x1b[0m"); } };
+}
+function fitTerm() {
+  if (!term.open || !term.t) return;
+  try { term.fit.fit(); if (term.ws && term.ws.readyState === 1) term.ws.send(JSON.stringify({resize: [term.t.cols, term.t.rows]})); } catch {}
+}
+function disposeTerm() {
+  if (term.ws) { const w = term.ws; term.ws = null; w.close(); }
+  if (term.t) { term.t.dispose(); term.t = null; }
+}
+function syncTerm() {   // the shell lives in the chat's folder: another folder means a fresh shell
+  if (term.t && term.workdir !== (chat.workdir || "")) { disposeTerm(); if (term.open) startTerm(); }
+}
+$("ttoggle").onclick = () => { term.open = !term.open; layout(); if (term.open) startTerm(); };
+$("tclose").onclick = () => { term.open = false; layout(); };
+
+function drag(el, onMove) {
+  el.addEventListener("pointerdown", e => {
+    e.preventDefault(); el.setPointerCapture(e.pointerId);
+    document.body.classList.add("dragging"); el.classList.add("drag");
+    const up = () => { el.removeEventListener("pointermove", onMove); el.removeEventListener("pointerup", up); document.body.classList.remove("dragging"); el.classList.remove("drag"); };
+    el.addEventListener("pointermove", onMove); el.addEventListener("pointerup", up);
+  });
+}
+const setPW = w => { $("panel").style.setProperty("--pw", w + "px"); };
+drag($("hsplit"), e => { const w = Math.min(Math.max(window.innerWidth - e.clientX, 320), window.innerWidth - 620); setPW(w); localStorage.pw = w; });
+$("hsplit").ondblclick = () => { $("panel").style.removeProperty("--pw"); localStorage.removeItem("pw"); };
+drag($("vsplit"), e => { const r = $("panel").getBoundingClientRect(); termH = Math.round(Math.min(Math.max(r.bottom - e.clientY, 120), r.height - 160)); localStorage.termH = termH; layout(); });
+$("vsplit").ondblclick = () => { termH = 300; localStorage.removeItem("termH"); layout(); };
+if (+localStorage.pw) setPW(+localStorage.pw);
+
+$("ptoggle").onclick = () => { panel.open = !panel.open; if (panel.open && !panel.tabs.length) loadDir(panel.dir); renderPanel(); };
+const READONLY = new Set(["read_file", "list_dir", "glob", "grep"]);
+const pending = {};
+function callHtml(c) {
+  let a = {}; try { a = JSON.parse(c.args || "{}"); } catch {}
+  if ((c.name === "write_file" || c.name === "edit_file") && c.status === "done") {
+    const m = c.meta || {}, path = norm(a.path || "");
+    const lines = t => (t || "").split("\n").length;
+    const added = m.added ?? lines(c.name === "write_file" ? a.content : a.new_string);
+    const removed = m.removed ?? (c.name === "edit_file" ? lines(a.old_string) : 0);
+    const label = c.name === "edit_file" ? "Geändert" : (m.created === false ? "Überschrieben" : "Erstellt");
+    return `<div class="frow" data-file="${esc(path)}"><span>${label}</span><span class="fn">${esc(base(path))}</span><span class="plus">+${added}</span><span class="minus">−${removed}</span><span class="chev">›</span></div>`;
+  }
+  const title = {bash: "$ " + (a.command || ""), read_file: "Lesen " + (a.path || ""), write_file: "Schreiben " + (a.path || ""),
+    edit_file: "Ändern " + (a.path || ""), list_dir: "Ordner " + (a.path || "."), glob: "Glob " + (a.pattern || ""),
+    grep: "Suche " + (a.pattern || "")}[c.name] || c.name;
+  let detail = c.name === "write_file" ? (a.content || "") : c.name === "edit_file"
+    ? (a.old_string || "").split("\n").map(l => "- " + l).join("\n") + "\n" + (a.new_string || "").split("\n").map(l => "+ " + l).join("\n")
+    : c.name === "bash" ? (a.command || "") : "";
+  if (c.result) detail += (detail ? "\n\n" : "") + c.result;
+  const label = {approval: "wartet auf Freigabe", running: "läuft…", done: "✓", error: "Fehler", denied: "abgelehnt", pending: "…"}[c.status] || "";
+  const k = "c" + c.id, open = c.status === "approval" || openSet.has(k);
+  const btns = c.status === "approval" ? `<div class="btns"><button data-act="allow" data-id="${esc(c.id)}">Erlauben</button><button data-act="always" data-id="${esc(c.id)}">Immer erlauben (dieser Chat)</button><button data-act="deny" data-id="${esc(c.id)}">Ablehnen</button></div>` : "";
+  return `<details class="call ${c.status}" data-k="${esc(k)}"${open ? " open" : ""}><summary><span class="ttl">${esc(title)}</span><span class="st">${label}</span></summary>${detail ? `<pre><code>${esc(detail)}</code></pre>` : ""}${btns}</details>`;
+}
+function msgHtml(m) {
+  if (m.role === "user") return `<div class="msg user"><div class="who">Du</div><div class="body">${esc(m.content)}</div></div>`;
+  const steps = m.steps || [{content: m.content, reasoning: m.reasoning, calls: []}];
+  let inner = steps.map((s, i) => {
+    const k = `r${m.id}${i}`;
+    const think = s.reasoning ? `<details class="think" data-k="${k}"${openSet.has(k) ? " open" : ""}><summary>Denkprozess</summary><div>${esc(s.reasoning)}</div></details>` : "";
+    return think + (s.content ? `<div class="body">${linkFiles(md(s.content))}</div>` : "") + (s.calls || []).map(callHtml).join("");
+  }).join("");
+  if (!m.done) inner += statusHtml(m);
+  const err = m.error ? `<div class="err">${esc(m.error)}</div>` : "";
+  return `<div class="msg"><div class="who">${esc(m.model || "")}</div>${inner}${err}</div>`;
+}
+function render() {
+  curIdx = fileIndex();
+  $("ttl").textContent = chat.id || branch().length ? chat.title : "";
+  $("ptoggle").style.display = chat.workdir ? "" : "none";
+  const log = $("log"), stick = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+  const msgs = branch();
+  log.innerHTML = msgs.length ? msgs.map(msgHtml).join("")
+    : `<div class="hello"><i>✳</i>Was steht an${userFirst ? ", " + esc(userFirst) : ""}?</div>${chat.workdir ? "" : '<div class="hint">Wähle unten einen Ordner, damit ich Dateien lesen und ändern kann – oder chatte einfach los.</div>'}`;
+  if (stick) log.scrollTop = log.scrollHeight;
+  const busy = !!streaming;
+  $("send").innerHTML = busy ? STOP : ARROW;
+  $("send").title = busy ? "Stopp" : "Senden";
+  $("send").classList.toggle("stop", busy);
+  $("folder").querySelector("span").textContent = chat.workdir ? chat.workdir.split("/").filter(Boolean).pop() || "/" : "Kein Ordner";
+  $("folder").title = chat.workdir || "Arbeitsordner wählen";
+  $("folder").classList.toggle("on", !!chat.workdir);
+  $("permWrap").style.display = chat.workdir ? "" : "none";
+  $("perm").value = chat.perm;
+  $("perm").refreshLabel(); $("model").refreshLabel();
+}
+$("log").addEventListener("toggle", e => {
+  const k = e.target.dataset && e.target.dataset.k;
+  if (k) e.target.open ? openSet.add(k) : openSet.delete(k);
+}, true);
+$("log").addEventListener("click", e => {
+  const f = e.target.closest("[data-file]");
+  if (f) { e.preventDefault(); return openFile(f.dataset.file); }
+  const b = e.target.closest("[data-act]");
+  if (b && pending[b.dataset.id]) pending[b.dataset.id](b.dataset.act);
+});
+$("mode").onclick = e => { e.stopPropagation(); $("folderMenu").classList.remove("on"); $("modeMenu").classList.toggle("on"); };
+document.addEventListener("click", () => { $("modeMenu").classList.remove("on"); $("folderMenu").classList.remove("on"); });
+$("perm").onchange = () => { chat.perm = $("perm").value; };
+
+// Custom dropdowns: the native <select> popup is drawn by the toolkit and cannot be styled. The hidden
+// <select> stays as the data holder, so the rest of the code reads/writes it as before.
+function bindDropdown(sel, btn, menu, describe) {
+  sel.refreshLabel = () => { btn.querySelector("span").textContent = sel.selectedOptions[0] ? sel.selectedOptions[0].text : ""; };
+  btn.onclick = () => {
+    if (streaming && sel.id === "model") return;
+    if (menu.classList.contains("on")) return menu.classList.remove("on");
+    menu.innerHTML = [...sel.options].map(o => `<div class="item" data-v="${esc(o.value)}"><span>${esc(o.text)}${describe ? `<small class="d">${describe(o.value)}</small>` : ""}</span>${o.value === sel.value ? '<span class="ck">✓</span>' : ""}</div>`).join("");
+    menu.classList.add("on");
+    const cur = menu.querySelector(".ck"); if (cur) cur.parentElement.scrollIntoView({block: "nearest"});
+  };
+  menu.onclick = e => {
+    const it = e.target.closest(".item"); if (!it) return;
+    sel.value = it.dataset.v; sel.dispatchEvent(new Event("change")); sel.refreshLabel(); menu.classList.remove("on");
+  };
+}
+bindDropdown($("perm"), $("permBtn"), $("permMenu"), v => ({ask: "Vor Änderungen und Befehlen fragen", auto: "Alles ohne Rückfrage ausführen"})[v]);
+bindDropdown($("model"), $("modelBtn"), $("modelMenu"));
+// one menu at a time: a click outside the menu's own wrapper closes it
+document.addEventListener("click", e => {
+  document.querySelectorAll(".menu.on, .umenu.on").forEach(m => { if (!m.parentElement.contains(e.target)) m.classList.remove("on"); });
+}, true);
+
+// ---- folder picker -----------------------------------------------------
+let pCur = "";
+async function pickerLoad(path) {
+  const d = await api("/app/fs?path=" + encodeURIComponent(path || ""));
+  pCur = d.path; $("pPath").value = d.path;
+  const base = d.path.replace(/\/$/, "");
+  $("pList").innerHTML = (d.parent ? `<div class="pi" data-p="${esc(d.parent)}">⬑ ..</div>` : "")
+    + d.dirs.map(n => `<div class="pi" data-p="${esc(base + "/" + n)}">📁 ${esc(n)}</div>`).join("");
+}
+async function setWorkdir(dir) {
+  chat.workdir = dir; addRecent(dir);
+  if (dir) localStorage.workdir = dir; else localStorage.removeItem("workdir");
+  $("picker").classList.remove("on"); resetPanel(); render();
+  if (chat.id) { try { await save(); } catch {} }
+}
+async function openPicker() {
+  $("picker").classList.add("on");
+  try { await pickerLoad(chat.workdir || localStorage.workdir || ""); } catch (e) { $("pList").textContent = String(e.message); }
+}
+const recents = () => { try { return JSON.parse(localStorage.recentFolders || "[]"); } catch { return []; } };
+function addRecent(path) {
+  if (!path) return;
+  try { localStorage.recentFolders = JSON.stringify([path, ...recents().filter(x => x !== path)].slice(0, 8)); } catch {}
+}
+async function showFolderMenu() {
+  const all = recents();
+  const alive = await Promise.all(all.map(p => fetch("/app/fs?path=" + enc(p)).then(r => r.ok).catch(() => false)));
+  const list = all.filter((_, i) => alive[i]);                 // folders deleted since are dropped quietly
+  if (list.length !== all.length) { try { localStorage.recentFolders = JSON.stringify(list); } catch {} }
+  const names = list.map(p => p.split("/").filter(Boolean).pop() || "/");
+  const row = (attr, label, extra, on) => `<div class="item" ${attr}><span>${label}${extra ? `<small>${esc(extra)}</small>` : ""}</span>${on ? '<span class="ck">✓</span>' : ""}</div>`;
+  $("folderMenu").innerHTML = row('data-none="1"', "Kein Ordner", "", !chat.workdir)
+    + (list.length ? '<hr><span class="lbl">Zuletzt</span>' + list.map((p, i) => {
+        const dup = names.filter(n => n === names[i]).length > 1;      // same folder name twice: show the parent too
+        return row(`data-path="${esc(p)}" title="${esc(p)}"`, esc(names[i]), dup ? p.split("/").filter(Boolean).slice(-2, -1)[0] : "", p === chat.workdir);
+      }).join("") : "")
+    + '<hr>' + row('data-open="1"', "Ordner öffnen…", "", false);
+  $("folderMenu").classList.add("on");
+}
+$("folder").onclick = e => {
+  e.stopPropagation();
+  if (streaming) return;
+  $("modeMenu").classList.remove("on");
+  if ($("folderMenu").classList.contains("on")) $("folderMenu").classList.remove("on"); else showFolderMenu();
+};
+$("folderMenu").onclick = e => {
+  const it = e.target.closest(".item"); if (!it) return;
+  $("folderMenu").classList.remove("on");
+  if (it.dataset.open) openPicker();
+  else setWorkdir(it.dataset.none ? null : it.dataset.path);
+};
+$("pList").onclick = e => { const i = e.target.closest(".pi"); if (i) pickerLoad(i.dataset.p).catch(() => {}); };
+$("pPath").onkeydown = e => { if (e.key === "Enter") pickerLoad($("pPath").value).catch(() => {}); };
+$("pOk").onclick = () => setWorkdir(pCur);
+$("pNone").onclick = () => setWorkdir(null);
+$("pCancel").onclick = () => $("picker").classList.remove("on");
+
+// ---- sending -----------------------------------------------------------
+function toOpenWebUI() {
+  const msgs = chat.history.messages;
+  const flat = Object.values(msgs).sort((a, b) => a.timestamp - b.timestamp);
+  return {id: chat.id || "", title: chat.title, models: [chat.model], params: {},
+          history: chat.history, workdir: chat.workdir, messages: flat, tags: [], files: [], timestamp: Date.now()};
+}
+async function save() {
+  if (!chat.id) {
+    const c = await api(OW + "v1/chats/new", json("POST", {chat: toOpenWebUI(), folder_id: null}));
+    chat.id = c.id; chat.updated_at = c.updated_at;
+  } else {
+    const c = await api(OW + `v1/chats/${chat.id}`, json("POST", {chat: toOpenWebUI()}));
+    chat.updated_at = c.updated_at;
+  }
+}
+
+const TOOLS = [
+  ["read_file", "Read a text file (line-numbered). Use offset/limit for large files.", {path: "string", offset: "integer", limit: "integer"}, ["path"]],
+  ["write_file", "Create or overwrite a file with the given content.", {path: "string", content: "string"}, ["path", "content"]],
+  ["edit_file", "Replace old_string with new_string in a file. old_string must match exactly once unless replace_all is true. Read the file first.", {path: "string", old_string: "string", new_string: "string", replace_all: "boolean"}, ["path", "old_string", "new_string"]],
+  ["list_dir", "List a directory.", {path: "string"}, []],
+  ["glob", "Find files by glob pattern, e.g. **/*.py", {pattern: "string", path: "string"}, ["pattern"]],
+  ["grep", "Search file contents with a regex. Returns path:line:text.", {pattern: "string", path: "string", include: "string"}, ["pattern"]],
+  ["bash", "Run a shell command in the working folder. Returns combined output and exit code.", {command: "string", timeout: "integer"}, ["command"]],
+].map(([name, description, props, required]) => ({type: "function", function: {name, description, parameters: {type: "object",
+  properties: Object.fromEntries(Object.entries(props).map(([k, t]) => [k, {type: t}])), required}}}));
+
+const sysPrompt = () => `You are a coding agent working in the user's project folder: ${chat.workdir}
+Use the tools to explore the project, read and edit files, and run commands. Paths are relative to that folder.
+Read a file before editing it; prefer edit_file for small changes. Verify your work (run tests or the program) when possible.
+Be concise. When finished, summarize what you changed. Answer in the user's language.`;
+
+function payload(upto) {
+  const out = chat.workdir ? [{role: "system", content: sysPrompt()}] : [];
+  for (const m of branch()) {
+    if (m.role === "user") out.push({role: "user", content: m.content});
+    else if (m.steps) for (const s of m.id === upto ? m.steps.slice(0, -1) : m.steps) {  // current message: finished steps only
+      if (s.calls && s.calls.length) {
+        out.push({role: "assistant", content: s.content || null,
+          tool_calls: s.calls.map(c => ({id: c.id, type: "function", function: {name: c.name, arguments: c.args || "{}"}}))});
+        for (const c of s.calls) out.push({role: "tool", tool_call_id: c.id, content: c.result ?? "Cancelled."});
+      } else if (s.content) out.push({role: "assistant", content: s.content});
+    } else if (m.content) out.push({role: "assistant", content: m.content});
+  }
+  return out;
+}
+
+async function streamStep(msgs, step, ctrl) {
+  const body = {model: chat.model, stream: true, messages: msgs};
+  if (chat.workdir) body.tools = TOOLS;
+  const r = await fetch("/v1/chat/completions", {...json("POST", body), signal: ctrl.signal});
+  if (r.status === 401) { showLogin(); throw new Error("Nicht angemeldet"); }
+  if (!r.ok) throw new Error(`${r.status} ${(await r.text()).slice(0, 300)}`);
+  const rd = r.body.getReader(), dec = new TextDecoder(); let buf = "";
+  for (;;) {
+    const {done, value} = await rd.read(); if (done) break;
+    buf += dec.decode(value, {stream: true});
+    let i;
+    while ((i = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+      if (!line.startsWith("data:") || line.includes("[DONE]")) continue;
+      let d; try { d = JSON.parse(line.slice(5)).choices?.[0]?.delta; } catch { continue; }
+      if (!d) continue;
+      if (d.content) step.content += d.content;
+      if (d.reasoning_content) step.reasoning += d.reasoning_content;
+      for (const tc of d.tool_calls || []) {      // arrives in fragments, keyed by index
+        const c = step.calls[tc.index ?? 0] ??= {id: "", name: "", args: "", status: "pending"};
+        if (tc.id) c.id = tc.id;
+        if (tc.function?.name) c.name = c.name || tc.function.name;
+        if (tc.function?.arguments) c.args += tc.function.arguments;
+      }
+    }
+    render();
+  }
+  step.calls = step.calls.filter(c => c && c.name);
+  for (const c of step.calls) { c.id = c.id || "call_" + uuid().slice(0, 8); if (!step.reasoning) delete step.reasoning; }
+}
+
+async function runCall(c, ctrl) {
+  let args;
+  try { args = JSON.parse(c.args || "{}"); }
+  catch (e) { c.status = "error"; c.result = "Error: arguments are not valid JSON: " + e.message; return; }
+  if (!READONLY.has(c.name) && chat.perm !== "auto") {
+    c.status = "approval"; render();
+    const choice = await new Promise(res => { pending[c.id] = res; ctrl.signal.addEventListener("abort", () => res("deny"), {once: true}); });
+    delete pending[c.id];
+    if (choice === "deny") { c.status = "denied"; c.result = "The user denied this action."; return; }
+    if (choice === "always") { chat.perm = "auto"; }
+  }
+  c.status = "running"; render();
+  const r = await (await fetch("/app/tool", {...json("POST", {workdir: chat.workdir, name: c.name, args}), signal: ctrl.signal})).json();
+  c.result = r.output; c.status = r.is_error ? "error" : "done"; c.meta = r.meta || undefined;
+  if (!r.is_error && (c.name === "write_file" || c.name === "edit_file")) refreshTab(norm(args.path || ""));
+}
+
+async function send(text) {
+  const m = chat.history.messages, parent = chat.history.currentId;
+  const u = {id: uuid(), parentId: parent, childrenIds: [], role: "user", content: text, timestamp: now(), models: [chat.model]};
+  const a = {id: uuid(), parentId: u.id, childrenIds: [], role: "assistant", content: "", steps: [], model: chat.model,
+             modelName: $("model").selectedOptions[0].text, modelIdx: 0, timestamp: now(), done: false, started: Date.now()};
+  u.childrenIds.push(a.id); if (parent) m[parent].childrenIds.push(u.id);
+  m[u.id] = u; m[a.id] = a; chat.history.currentId = a.id;
+  if (chat.title === "Neuer Chat") chat.title = text.replace(/\s+/g, " ").slice(0, 50);
+
+  const ctrl = streaming = new AbortController();
+  render();
+  try {
+    for (let turn = 0; turn < 40 && !ctrl.signal.aborted; turn++) {
+      const step = {content: "", reasoning: "", calls: []};
+      a.steps.push(step);
+      await streamStep(payload(a.id), step, ctrl);
+      if (!step.calls.length) break;
+      for (const c of step.calls) await runCall(c, ctrl);
+      render();
+      if (turn === 39) a.error = "Abbruch: Limit von 40 Schritten erreicht.";
+    }
+  } catch (e) { if (e.name !== "AbortError") a.error = String(e.message || e); }
+  for (const s of a.steps) for (const c of s.calls)
+    if (c.result === undefined) { c.status = "denied"; c.result = "Cancelled."; }
+  a.content = a.steps.map(s => s.content).filter(Boolean).join("\n\n");
+  a.done = true; streaming = null; render();
+  if (a.content || a.steps.some(s => s.calls.length) || !a.error) { try { await save(); } catch (e) { a.error = "Sync fehlgeschlagen: " + e.message; render(); } }
+  loadList();
+}
+
+$("form").onsubmit = e => {
+  e.preventDefault();
+  if (streaming) return streaming.abort();
+  const text = $("input").value.trim(); if (!text) return;
+  $("input").value = ""; $("input").style.height = "auto";
+  send(text);
+};
+$("input").onkeydown = e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("form").requestSubmit(); } };
+$("input").oninput = () => { const t = $("input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 200) + "px"; };
+$("new").onclick = newChat;
+
+// ---- sync: pick up changes made elsewhere (web UI, other device) --------
+async function sync() {
+  if (streaming || document.hidden || $("login").classList.contains("on")) return;
+  try {
+    await loadList();
+    const c = chat && chat.id && list.find(x => x.id === chat.id);
+    if (c && c.updated_at > chat.updated_at) await openChat(chat.id);
+  } catch {}
+}
+setInterval(sync, 20000);
+document.addEventListener("visibilitychange", sync);
+
+async function boot() {
+  const st = await (await fetch("/app/status")).json();
+  if (!st.logged_in) return showLogin();
+  $("login").classList.remove("on");
+  $("who").textContent = (st.user?.name || st.user?.email || "").split(" ")[0];
+  userFirst = (st.user?.name || "").split(" ")[0];
+  $("av").textContent = (userFirst || st.user?.email || "?")[0].toUpperCase();
+  $("uemail").textContent = st.user?.email || "";
+  await loadModels(); newChat();
+}
+addRecent(localStorage.workdir);   // folders used before this feature existed
+reportDrag();
+applyAppearance();   // styles exist now: report the real background to the native window
+boot();
+</script>
+</body>
+</html>
