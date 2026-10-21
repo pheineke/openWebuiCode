@@ -12,6 +12,8 @@ from . import auth
 
 def run_app(port: int = 8787) -> None:
     import uvicorn
+    from . import server
+    server.PORT = port
     url = f"http://127.0.0.1:{port}"
     srv = uvicorn.Server(uvicorn.Config("edu_ki_proxy.server:app", host="127.0.0.1", port=port, log_level="warning"))
     threading.Thread(target=srv.run, daemon=True).start()
@@ -52,6 +54,8 @@ def main() -> None:
         print("Session stored in", auth.STATE_FILE)
     elif a.cmd == "serve":
         import uvicorn
+        from . import server
+        server.PORT = a.port        # the Host/Origin guard must expect the port we really listen on
         uvicorn.run("edu_ki_proxy.server:app", host="127.0.0.1", port=a.port)
     elif a.cmd == "app":
         run_app()

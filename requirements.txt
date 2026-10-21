@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+websockets      # Terminal (WebSocket)
+httpx
+playwright      # Chromium-Login als Ausweg; wird beim Import immer gebraucht
