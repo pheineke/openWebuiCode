@@ -275,6 +275,8 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
 .hljs-title,.hljs-section,.hljs-function .hljs-title{color:var(--h-fn)}
 .hljs-tag,.hljs-name,.hljs-attr,.hljs-deletion,.hljs-property,.hljs-params{color:var(--h-tag)}
 .hljs-meta{color:var(--h-com)}
+#altLogin{display:none}
+.shell #altLogin{display:block!important}
 @media(max-width:700px){aside{display:none}}
 </style>
 </head>
@@ -362,9 +364,10 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
 </div></div>
 <div id="login"><div class="card">
   <h1>EDU-KI-RLP</h1>
-  <p>Melde dich mit deinem Hochschul-Login (Shibboleth) an. Es öffnet sich ein Browserfenster; deine Zugangsdaten gehen nur an deine Hochschule.</p>
+  <p>Melde dich mit deinem Hochschul-Login (Shibboleth) an. Deine Zugangsdaten gehen nur an deine Hochschule.</p>
   <button id="loginBtn">Mit Hochschul-Login anmelden</button>
   <p id="loginMsg" style="margin-top:14px;font-size:13px"></p>
+  <p id="altLogin" style="font-size:12px;margin:0"><a href="#" id="altLoginLink" style="color:var(--muted)">Stattdessen im Chromium-Fenster anmelden</a></p>
 </div></div>
 
 <script>
@@ -388,7 +391,14 @@ const json = (method, body) => ({method, headers: {"content-type": "application/
 
 // ---- login -------------------------------------------------------------
 function showLogin(msg = "") { $("login").classList.add("on"); $("loginMsg").textContent = msg; }
-$("loginBtn").onclick = async () => {
+const shellPost = o => { try { window.webkit.messageHandlers.shell.postMessage(JSON.stringify(o)); return true; } catch { return false; } };
+// In the native window the login runs in the window itself; elsewhere (or on request) a Chromium window is used.
+$("loginBtn").onclick = () => {
+  if (shellPost({login: true})) { $("loginMsg").textContent = "Die Anmeldung läuft im Fenster …"; return; }
+  chromiumLogin();
+};
+$("altLoginLink").onclick = e => { e.preventDefault(); chromiumLogin(); };
+async function chromiumLogin() {
   $("loginBtn").disabled = true;
   $("loginMsg").textContent = "Browserfenster geöffnet – bitte dort anmelden…";
   try {
@@ -397,8 +407,8 @@ $("loginBtn").onclick = async () => {
     await boot();
   } catch (e) { $("loginMsg").textContent = "Anmeldung fehlgeschlagen oder abgelaufen. Bitte erneut versuchen."; }
   $("loginBtn").disabled = false;
-};
-$("logout").onclick = async () => { await fetch("/app/logout", {method: "POST"}); chat = null; showLogin(); };
+}
+$("logout").onclick = async () => { await fetch("/app/logout", {method: "POST"}); shellPost({logout: true}); chat = null; showLogin(); };
 
 // ---- models / chat list ------------------------------------------------
 async function loadModels() {

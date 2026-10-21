@@ -101,6 +101,8 @@ def interactive_login(timeout_s: int = 600) -> dict:
 
 def silent_refresh() -> dict:
     """Reuse the persistent browser profile without UI; works while the IdP/front-door session is alive."""
+    if not PROFILE_DIR.exists():   # logged in through the native window: there is no Chromium profile to reuse
+        raise LoginRequired("session expired, please log in again")
     state = _run(headless=True, timeout_s=25)
     if not state:
         raise LoginRequired("session expired, run: python -m edu_ki_proxy login")

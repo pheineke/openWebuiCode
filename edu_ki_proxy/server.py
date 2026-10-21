@@ -129,6 +129,13 @@ def _expired(resp: httpx.Response) -> bool:
     return resp.status_code in (401, 403) or (300 <= resp.status_code < 400)
 
 
+def install_session(state: dict) -> None:
+    """Adopt a session captured elsewhere (the native window's own login)."""
+    global _state
+    auth.save_state(state)
+    _state = state
+
+
 async def _refresh(stale_token: str | None) -> None:
     global _state
     async with _lock:
