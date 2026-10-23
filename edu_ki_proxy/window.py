@@ -9,6 +9,7 @@ second browser window is needed.
 """
 import json
 import re
+import threading
 import time
 from urllib.parse import urlparse
 
@@ -19,24 +20,38 @@ gi.require_version("Adw", "1")
 gi.require_version("WebKit", "6.0")
 from gi.repository import Adw, Gdk, GLib, Gtk, WebKit  # noqa: E402
 
-from . import auth  # noqa: E402
+from . import auth, backends, providers  # noqa: E402
 
 DRAG_HEIGHT = 40        # px: height of the page's top bar, which the drag strip covers
 DRAG_DEFAULT = 270      # px: until the page reports where its buttons are, only the sidebar header drags
 
 
 class LoginFlow:
-    """Shibboleth login inside the window: load the login page, wait for Open WebUI's token, capture the session."""
+    """Provider login inside the window: load the provider, wait for its token, capture the session.
 
-    def __init__(self, view: WebKit.WebView, app_url: str, show_login_bar):
-        self.view, self.app_url, self.show_bar = view, app_url, show_login_bar
-        self.base_host = urlparse(auth.BASE).hostname
+    A token is only accepted once the provider confirms it: a stale one left in WebKit's storage
+    would otherwise "log in" at once without asking.
+    """
+
+    def __init__(self, view: WebKit.WebView, app_url: str, show_login_bar, set_label):
+        self.view, self.app_url, self.show_bar, self.set_label = view, app_url, show_login_bar, set_label
+        self.provider: dict | None = None
+        self.backend = None
+        self.base_host = None
         self.active = False
+        self.checking = False
+        self.rejected: set[str] = set()
 
-    def start(self) -> None:
-        self.active = True
+    def start(self, pid: str | None = None) -> None:
+        self.provider = providers.get(pid) if pid else (providers.default() or (providers.load() or [None])[0])
+        self.backend = backends.get(self.provider.get("type")) if self.provider else None
+        if not self.backend:
+            return
+        self.base_host = urlparse(self.provider["base_url"]).hostname
+        self.set_label(f"Anmeldung bei {self.provider.get('name') or self.base_host}")
+        self.active, self.checking, self.rejected = True, False, set()
         self.show_bar(True)
-        self.view.load_uri(auth.BASE)          # redirects to the Hochschule picker / Shibboleth IdP
+        self.view.load_uri(self.provider["base_url"])
         GLib.timeout_add(700, self._poll)
 
     def cancel(self) -> None:
@@ -47,8 +62,8 @@ class LoginFlow:
     def _poll(self) -> bool:
         if not self.active:
             return False
-        if urlparse(self.view.get_uri() or "").hostname == self.base_host and not self.view.is_loading():
-            self.view.evaluate_javascript("localStorage.getItem('token')", -1, None, None, None, self._on_token)
+        if not self.checking and urlparse(self.view.get_uri() or "").hostname == self.base_host and not self.view.is_loading():
+            self.view.evaluate_javascript(self.backend.token_js(), -1, None, None, None, self._on_token)
         return True
 
     def _on_token(self, view, res) -> None:
@@ -57,29 +72,61 @@ class LoginFlow:
             token = value.to_string() if value.is_string() else None
         except GLib.Error:
             token = None
-        if token and self.active:
-            self.finish(token)
+        if token and self.active and not self.checking and token not in self.rejected:
+            self.checking = True
+            self._collect(token)
 
-    def finish(self, token: str) -> None:
-        self.active = False
-        cookies = self.view.get_network_session().get_cookie_manager()
+    def _collect(self, token: str) -> None:
+        provider, backend = self.provider, self.backend
 
         def got(manager, res):
             try:
                 jar = manager.get_cookies_finish(res)
             except GLib.Error:
                 jar = []
-            self._done(token, jar)
+            state = {"token": token, "captured_at": int(time.time()),
+                     "user_agent": self.view.get_settings().get_user_agent(),
+                     "cookies": [{"name": c.get_name(), "value": c.get_value(), "domain": c.get_domain(),
+                                  "path": c.get_path()} for c in jar]}
+            # the check is a network round trip: keep it off the UI thread
+            threading.Thread(target=lambda: GLib.idle_add(self._checked, provider, state,
+                                                          backend.check_session(provider, state)),
+                             daemon=True).start()
 
-        cookies.get_cookies(auth.BASE, None, got)
+        self.view.get_network_session().get_cookie_manager().get_cookies(provider["base_url"], None, got)
 
-    def _done(self, token: str, jar) -> None:
+    def _checked(self, provider: dict, state: dict, ok: bool) -> bool:
+        self.checking = False
+        if not self.active or provider is not self.provider:
+            return False
+        if not ok:
+            self.rejected.add(state["token"])     # wait for the page to show its login and a new token
+            return False
         from . import server
-        server.install_session({
-            "token": token, "captured_at": int(time.time()),
-            "cookies": [{"name": c.get_name(), "value": c.get_value(), "domain": c.get_domain(), "path": c.get_path()} for c in jar]})
+        self.active = False
+        server.install_session(provider["id"], state)
         self.show_bar(False)
         self.view.load_uri(self.app_url)
+        return False
+
+
+def forget_logins(session: WebKit.NetworkSession, keep_host: str) -> None:
+    """Drop cookies and storage of every site but the app itself, so the next login really asks.
+    (Shibboleth's IdP lives on another domain than Open WebUI, hence all sites.)"""
+    T = WebKit.WebsiteDataTypes
+    types = (T.COOKIES | T.LOCAL_STORAGE | T.SESSION_STORAGE | T.INDEXEDDB_DATABASES | T.DOM_CACHE
+             | T.SERVICE_WORKER_REGISTRATIONS)
+    manager = session.get_website_data_manager()
+
+    def fetched(m, res):
+        try:
+            records = [r for r in m.fetch_finish(res) if r.get_name() != keep_host]
+        except GLib.Error:
+            return
+        if records:
+            m.remove(types, records, None, lambda m2, r2: m2.remove_finish(r2))
+
+    manager.fetch(types, None, fetched)
 
 
 def build_window(app: Adw.Application, url: str):
@@ -101,21 +148,35 @@ def build_window(app: Adw.Application, url: str):
 
     # Drag strip over the page's header: moves the window, double-click maximises. It is an overlay, so it
     # swallows pointer events in its area: its width is set by the page so it never covers the page's buttons.
-    handle = Gtk.WindowHandle(halign=Gtk.Align.START, valign=Gtk.Align.START, height_request=DRAG_HEIGHT, width_request=DRAG_DEFAULT)
+    # Two segments: the page's sidebar button sits between them and must stay clickable.
+    handles = [Gtk.WindowHandle(halign=Gtk.Align.START, valign=Gtk.Align.START, height_request=DRAG_HEIGHT) for _ in range(2)]
+    drag = {"segments": [(0, DRAG_DEFAULT)], "login": False}
+
+    def refresh_handles() -> None:
+        for i, h in enumerate(handles):
+            seg = drag["segments"][i] if i < len(drag["segments"]) else None
+            h.set_visible(bool(seg) and not drag["login"])
+            if seg:
+                h.set_margin_start(seg[0])
+                h.set_size_request(seg[1] - seg[0], DRAG_HEIGHT)
+
+    refresh_handles()
 
     # Bar shown only while logging in (the page is then a foreign site, so it has no header of its own).
     login_bar = Gtk.WindowHandle(visible=False)
     cancel = Gtk.Button(label="← Zurück zur App", valign=Gtk.Align.CENTER)
     row = Gtk.Box(spacing=12, margin_start=8, height_request=DRAG_HEIGHT)
     row.append(cancel)
-    row.append(Gtk.Label(label="Anmeldung bei EDU-KI-RLP", css_classes=["dim-label"]))
+    label = Gtk.Label(label="Anmeldung", css_classes=["dim-label"])
+    row.append(label)
     login_bar.set_child(row)
 
     def show_login_bar(on: bool) -> None:
         login_bar.set_visible(on)
-        handle.set_visible(not on)
+        drag["login"] = on
+        refresh_handles()
 
-    flow = LoginFlow(view, url, show_login_bar)
+    flow = LoginFlow(view, url, show_login_bar, lambda text: label.set_text(text))
     cancel.connect("clicked", lambda *_: flow.cancel())
 
     manager = view.get_user_content_manager()
@@ -130,11 +191,15 @@ def build_window(app: Adw.Application, url: str):
         except (ValueError, AttributeError):
             return
         if msg.get("login"):
-            flow.start()
-        if msg.get("logout"):      # forget the university's login cookie too, so the next login asks again
-            session.get_website_data_manager().clear(WebKit.WebsiteDataTypes.COOKIES, 0, None, lambda m, r: m.clear_finish(r))
-        if "dragEnd" in msg:       # draggable area ends where the page's buttons begin
-            handle.set_size_request(max(0, int(msg["dragEnd"])), DRAG_HEIGHT)
+            flow.start(msg.get("provider"))
+        if msg.get("logout"):      # forget the university's login too, so the next login asks again
+            forget_logins(session, urlparse(url).hostname)
+        if "drag" in msg:          # draggable areas: everywhere in the header except the page's buttons
+            try:
+                drag["segments"] = [(max(0, int(a)), int(b)) for a, b in msg["drag"] if int(b) > int(a)][:len(handles)]
+            except (TypeError, ValueError):
+                return
+            refresh_handles()
         if "bg" in msg:
             chrome(str(msg.get("bg", "")), str(msg.get("mode", "auto")))
 
@@ -142,7 +207,8 @@ def build_window(app: Adw.Application, url: str):
     view.load_uri(url)
 
     inner = Gtk.Overlay(child=view, hexpand=True, vexpand=True)
-    inner.add_overlay(handle)
+    for h in handles:
+        inner.add_overlay(h)
     content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
     content.append(login_bar)
     content.append(inner)

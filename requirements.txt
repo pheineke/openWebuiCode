@@ -2,4 +2,5 @@ fastapi
 uvicorn
 websockets      # Terminal (WebSocket)
 httpx
-playwright      # Chromium-Login als Ausweg; wird beim Import immer gebraucht
+playwright      # Chromium-Login (DeepSeek, Ausweichweg) und stille Neuanmeldung
+wasmtime        # DeepSeek proof-of-work (DeepSeekHashV1)

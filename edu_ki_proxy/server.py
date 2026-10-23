@@ -1,42 +1,50 @@
-"""OpenAI-compatible local proxy: /v1/* -> Open WebUI /api/* with the captured session."""
+"""Local proxy and web app backend.
+
+OpenAI-compatible clients talk to /v1/*; the app itself uses /app/* and /ow/*.
+A request's model id is ``providerId/modelName``.  Unprefixed ids go to the
+default provider, so old configurations keep working.  Everything that depends
+on the kind of provider lives in backends/.
+"""
 import asyncio
-import datetime
 import fcntl
 import json
+import mimetypes
 import os
-import re
 import secrets
 import signal
 import struct
 import subprocess
 import termios
 import time
+import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-import httpx
 from fastapi import FastAPI, Request, WebSocket
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from pydantic import BaseModel
 
-from . import auth, tools
+from . import auth, backends, chats, providers, remote, tools, trace, usage
+from .backends import ProxyError, emulate
 
-HOP = {"host", "content-length", "connection", "keep-alive", "transfer-encoding", "upgrade",
-       "authorization", "cookie", "accept-encoding"}
 
 @asynccontextmanager
 async def lifespan(_app):
-    _meta()   # live usage capture starts the first time the server runs, not the first time the page is opened
+    usage.meta()   # live usage capture starts the first time the server runs, not the first time the page is opened
     yield
 
 
 app = FastAPI(lifespan=lifespan)
 PORT = 8787
-client = httpx.AsyncClient(base_url=auth.BASE, timeout=httpx.Timeout(600, connect=15), follow_redirects=False)
-_lock = asyncio.Lock()
-_state = auth.load_state()
+_login_tasks: dict[str, asyncio.Task] = {}
+
+
+@app.exception_handler(ProxyError)
+async def _proxy_error(request: Request, exc: ProxyError):
+    trace.log("error", path=request.url.path, status=exc.status, message=exc.message)
+    return JSONResponse({"error": {"message": exc.message}}, status_code=exc.status)
 
 
 def _ok_hosts() -> set[str]:
@@ -45,7 +53,7 @@ def _ok_hosts() -> set[str]:
 
 @app.middleware("http")
 async def local_only(request: Request, call_next):
-    """The server holds a live session: refuse DNS-rebinding and cross-site requests."""
+    """The server holds live sessions: refuse DNS-rebinding and cross-site requests."""
     ok_hosts = _ok_hosts()
     origin = request.headers.get("origin")
     preview = request.url.path.startswith("/app/preview/") and request.method == "GET"
@@ -59,138 +67,112 @@ async def local_only(request: Request, call_next):
     return resp
 
 
-# ---- usage ledger -----------------------------------------------------------------------------
-# Every chat completion that passes through the proxy leaves one line (tokens, cost). The upstream
-# has no quota API for users, so this is the measurable consumption; it also covers opencode.
-LEDGER = auth.STATE_DIR / "usage.jsonl"
-META = auth.STATE_DIR / "usage-meta.json"
+# ---- provider helpers -------------------------------------------------------------------------
+def _provider(pid: str | None = None) -> dict:
+    if pid:
+        p = providers.get(pid)
+        if not p:
+            raise ProxyError("Anbieter nicht gefunden.", 404)
+        return p
+    p = providers.default()
+    if not p:
+        raise ProxyError("Kein Anbieter angemeldet.", 401)
+    return p
 
 
-def _meta() -> dict:
+def _logged_in(p: dict) -> dict:
+    if not providers.logged_in(p):
+        raise ProxyError(f"Bei {p.get('name') or p.get('id')} nicht angemeldet.", 401)
+    return p
+
+
+def _ow_provider(pid: str | None) -> dict:
+    """The Open WebUI instance for raw pass-through calls."""
+    p = _provider(pid) if pid else providers.default_openwebui()
+    if not p or p.get("type") != "openwebui":
+        raise ProxyError("Kein Open-WebUI-Anbieter.", 400)
+    return _logged_in(p)
+
+
+def _history_providers() -> list[dict]:
+    return [p for p in providers.load() if providers.logged_in(p) and backends.of(p).history]
+
+
+async def _each(items: list, fn) -> list:
+    """fn over items concurrently; a failing provider contributes nothing instead of failing the request."""
+    results = await asyncio.gather(*(fn(x) for x in items), return_exceptions=True)
+    return [r for r in results if not isinstance(r, BaseException)]
+
+
+# ---- models -----------------------------------------------------------------------------------
+def _model_item(p: dict, mid: str, name: str) -> dict:
+    return {"id": f"{p['id']}/{mid}", "name": name or mid, "model": mid, "provider": p["id"],
+            "provider_name": p.get("name"), "type": p.get("type"), "object": "model", "created": 0,
+            "owned_by": p.get("name") or p["id"]}
+
+
+async def _models_for(p: dict) -> list[dict]:
+    if not providers.logged_in(p):
+        return []
+    pairs = await asyncio.wait_for(backends.of(p).models(p), 45)
+    return [_model_item(p, mid, name) for mid, name in pairs]
+
+
+# ---- OpenAI-compatible API --------------------------------------------------------------------
+@app.get("/v1/models")
+async def v1_models():
+    return {"object": "list", "data": [m for ms in await _each(providers.load(), _models_for) for m in ms]}
+
+
+@app.post("/v1/chat/completions")
+async def v1_chat(request: Request):
     try:
-        return json.loads(META.read_text())
-    except (OSError, ValueError):
-        meta = {"since": int(time.time()), "backfilled": False}   # live capture starts now
-        _save_meta(meta)
-        return meta
-
-
-def _save_meta(meta: dict) -> None:
-    auth.STATE_DIR.mkdir(parents=True, exist_ok=True)
-    META.write_text(json.dumps(meta))
-
-
-def _record(model: str | None, usage: dict, src: str = "proxy", ts: int | None = None) -> None:
+        data = json.loads(await request.body())
+        if not isinstance(data, dict):
+            raise ValueError
+    except ValueError:
+        raise ProxyError("Ungültiger JSON-Body.", 400)
+    trace.start()
+    if trace.on():
+        trace.log("request", model=data.get("model"), stream=data.get("stream"),
+                  tools=[(t.get("function") or {}).get("name") for t in data.get("tools") or [] if isinstance(t, dict)],
+                  messages=trace.messages(data.get("messages")))
+    pid, model_name = providers.split_model(str(data.get("model") or ""))
+    p = _logged_in(_provider(pid))
+    data["model"] = model_name
+    b = backends.of(p)
     try:
-        row = {"ts": int(ts or time.time()), "model": model or "?", "src": src,
-               "in": int(usage.get("prompt_tokens", usage.get("input_tokens", 0)) or 0),
-               "out": int(usage.get("completion_tokens", usage.get("output_tokens", 0)) or 0),
-               "cost": float(usage.get("cost") or 0)}
-        auth.STATE_DIR.mkdir(parents=True, exist_ok=True)
-        with LEDGER.open("a") as f:
-            f.write(json.dumps(row) + "\n")
-    except (OSError, ValueError, TypeError):
-        pass   # accounting must never break a chat
+        if b.native_tools and data.get("tools") and emulate.wanted(p, model_name):
+            trace.log("route", how="tools in the prompt (emulate.py)", provider=p["id"])
+            return trace.response(await emulate.chat(b, p, data))
+        trace.log("route", how="native tools" if b.native_tools else f"{b.type} backend", provider=p["id"])
+        return trace.response(await b.chat(p, data))
+    except ProxyError:
+        raise
+    except Exception:
+        trace.log("crash", error=traceback.format_exc(), cap=8000)
+        raise
 
 
-class UsageTap:
-    """Watches a response pass by and records the final `usage` block (SSE chunk or JSON body)."""
-
-    def __init__(self, model: str | None, streaming: bool):
-        self.model, self.streaming, self.buf, self.usage = model, streaming, b"", None
-
-    def feed(self, chunk: bytes) -> None:
-        if self.streaming:
-            self.buf += chunk
-            *lines, self.buf = self.buf.split(b"\n")
-            for line in lines:
-                if line.startswith(b"data:") and b'"usage"' in line:
-                    try:
-                        u = json.loads(line[5:]).get("usage")
-                    except ValueError:
-                        continue
-                    if u:
-                        self.usage = u
-        elif len(self.buf) < 5_000_000:
-            self.buf += chunk
-
-    def finish(self) -> None:
-        if not self.streaming:
-            try:
-                self.usage = json.loads(self.buf).get("usage")
-            except (ValueError, AttributeError):
-                pass
-        if self.usage:
-            _record(self.model, self.usage)
-
-
-def _expired(resp: httpx.Response) -> bool:
-    # front door answers 3xx to the login page when its session is gone; Open WebUI answers 401
-    return resp.status_code in (401, 403) or (300 <= resp.status_code < 400)
-
-
-def install_session(state: dict) -> None:
-    """Adopt a session captured elsewhere (the native window's own login)."""
-    global _state
-    auth.save_state(state)
-    _state = state
-
-
-async def _refresh(stale_token: str | None) -> None:
-    global _state
-    async with _lock:
-        if _state and _state["token"] != stale_token:
-            return  # another request already refreshed
-        _state = await asyncio.to_thread(auth.silent_refresh)
-
-
-def _build(request: Request, path: str, body: bytes) -> httpx.Request:
-    headers = {k: v for k, v in request.headers.items() if k.lower() not in HOP}
-    headers["Authorization"] = f"Bearer {_state['token']}"
-    headers["Cookie"] = auth.cookie_header(_state)
-    headers["Accept-Encoding"] = "identity"  # we forward raw bytes, so never negotiate compression
-    return client.build_request(request.method, f"/api/{path}", params=request.query_params,
-                                headers=headers, content=body)
-
-
-# /v1/* is for OpenAI-compatible clients (opencode); /ow/* reaches any Open WebUI /api/* route (chats etc.)
-@app.api_route("/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
-@app.api_route("/ow/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
-async def forward(path: str, request: Request):
-    if not _state:
-        return JSONResponse({"error": {"message": "not logged in: run python -m edu_ki_proxy login"}}, 401)
-    body = await request.body()
-    resp = await client.send(_build(request, path, body), stream=True)
-    if _expired(resp):
-        await resp.aclose()
-        try:
-            await _refresh(_state["token"])
-        except auth.LoginRequired as e:
-            return JSONResponse({"error": {"message": str(e)}}, 401)
-        resp = await client.send(_build(request, path, body), stream=True)
-
+async def _ow_forward(path: str, request: Request):
+    p = _ow_provider(request.query_params.get("provider"))
     tap = None
     if request.method == "POST" and path.strip("/") == "chat/completions":
         try:
-            model = json.loads(body).get("model")
-        except ValueError:
-            model = None
-        tap = UsageTap(model, "text/event-stream" in resp.headers.get("content-type", ""))
+            tap = json.loads(await request.body()).get("model")
+        except (ValueError, AttributeError):
+            tap = None
+    return await backends.of(p).forward(p, path, request, tap_model=tap)
 
-    async def body_iter():
-        try:
-            async for chunk in resp.aiter_raw():
-                if tap:
-                    tap.feed(chunk)
-                yield chunk
-        finally:
-            await resp.aclose()
-            if tap:
-                tap.finish()
 
-    out = {k: v for k, v in resp.headers.items()
-           if k.lower() not in {"content-length", "content-encoding", "transfer-encoding", "connection", "set-cookie"}}
-    return StreamingResponse(body_iter(), status_code=resp.status_code, headers=out)
+@app.api_route("/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def forward_v1(path: str, request: Request):
+    return await _ow_forward(path, request)
+
+
+@app.api_route("/ow/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def forward_ow(path: str, request: Request):
+    return await _ow_forward(path, request)
 
 
 @app.get("/health")
@@ -198,192 +180,295 @@ async def health():
     return {"ok": True}
 
 
+# ---- app: status, providers, models -----------------------------------------------------------
 @app.get("/app/status")
 async def status():
-    if not _state:
-        return {"logged_in": False}
+    logged = [p for p in providers.load() if providers.logged_in(p)]
+    user = None
+    for p in sorted(logged, key=lambda p: p.get("type") != "openwebui"):   # the university account first
+        try:
+            user = await backends.of(p).user(p)
+        except Exception:
+            user = None
+        if user:
+            break
+    default = providers.default()
+    return {"logged_in": bool(logged), "providers": providers.all_public(), "user": user,
+            "default": default["id"] if default else None, "debug": trace.on()}
+
+
+@app.get("/app/providers")
+async def provider_list():
+    return {"providers": providers.all_public(), "types": backends.types()}
+
+
+@app.post("/app/providers")
+async def provider_add(req: dict):
     try:
-        r = await client.get("/api/v1/auths/", headers={"Authorization": f"Bearer {_state['token']}",
-                                                        "Cookie": auth.cookie_header(_state)})
-        if r.status_code == 200:
-            u = r.json()
-            return {"logged_in": True, "user": {"name": u.get("name"), "email": u.get("email")}}
-    except httpx.HTTPError:
-        pass
-    return {"logged_in": False}
+        p = providers.add(req)
+    except ValueError as e:
+        raise ProxyError(str(e), 400) from e
+    return {"provider": providers.public(p), "providers": providers.all_public()}
 
 
-_login_task: asyncio.Task | None = None
+@app.patch("/app/providers/{pid}")
+async def provider_update(pid: str, req: dict):
+    try:
+        p = providers.edit(pid, req)
+    except ValueError as e:
+        raise ProxyError(str(e), 400) from e
+    if not p:
+        raise ProxyError("Anbieter nicht gefunden.", 404)
+    return {"provider": providers.public(p)}
+
+
+@app.delete("/app/providers/{pid}")
+async def provider_remove(pid: str):
+    providers.remove(pid)
+    return {"ok": True, "providers": providers.all_public()}
+
+
+@app.post("/app/providers/{pid}/login")
+async def provider_login(pid: str):
+    """Log in in a Chromium window (blocks until done).  The app window logs in by itself instead
+    for providers whose login is "window", and hands the result to install_session()."""
+    p = _provider(pid)
+    b = backends.of(p)
+    if not b.login:
+        raise ProxyError("Dieser Anbieter braucht keine Anmeldung, nur einen API-Schlüssel.", 400)
+    task = _login_tasks.get(pid)
+    if not task or task.done():
+        task = asyncio.create_task(asyncio.to_thread(auth.interactive_login, p, b))
+        _login_tasks[pid] = task
+    try:
+        state = await asyncio.shield(task)
+    except auth.LoginRequired as e:
+        return JSONResponse({"error": {"message": str(e)}}, status_code=408)
+    except Exception as e:
+        return JSONResponse({"error": {"message": str(e)}}, status_code=500)
+    providers.set_session(pid, state)
+    return {"logged_in": True, "provider": providers.public(providers.get(pid) or p)}
+
+
+@app.post("/app/providers/{pid}/logout")
+async def provider_logout(pid: str):
+    p = _provider(pid)
+    providers.clear_session(pid)
+    await asyncio.to_thread(auth.clear_profile, p)
+    return {"logged_in": False, "providers": providers.all_public()}
+
+
+@app.post("/app/providers/{pid}/test")
+async def provider_test(pid: str):
+    p = _logged_in(_provider(pid))
+    try:
+        return await backends.of(p).test(p)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/app/models")
+async def app_models():
+    async def one(p: dict) -> dict:
+        try:
+            models = await _models_for(p)
+        except Exception:
+            models = []
+        return {"id": p.get("id"), "name": p.get("name"), "type": p.get("type"),
+                "logged_in": providers.logged_in(p), "models": models}
+    return {"providers": await _each(providers.load(), one)}
 
 
 @app.post("/app/login")
-async def login():
-    """Open the Shibboleth login in a browser window and wait for it to finish."""
-    global _state, _login_task
-    if _login_task is None or _login_task.done():
-        _login_task = asyncio.create_task(asyncio.to_thread(auth.interactive_login))
-    try:
-        _state = await asyncio.shield(_login_task)
-    except auth.LoginRequired as e:
-        return JSONResponse({"error": {"message": str(e)}}, 408)
-    return {"logged_in": True}
+async def login(provider: str | None = None):
+    p = providers.get(provider) if provider else (providers.default_openwebui() or providers.default())
+    if not p:
+        raise ProxyError("Kein Anbieter konfiguriert.", 400)
+    return await provider_login(p["id"])
 
 
 @app.post("/app/logout")
 async def logout():
-    global _state
-    _state = None
+    for p in providers.load():
+        providers.clear_session(p["id"])
+        await asyncio.to_thread(auth.clear_profile, p)
     auth.clear_state()
     return {"logged_in": False}
+
+
+def install_session(pid: str, state: dict) -> None:
+    """Adopt a session captured elsewhere (the native window's own login)."""
+    if not providers.set_session(pid, state):
+        raise ProxyError("Anbieter nicht gefunden.", 404)
+
+
+# ---- app: chats (stored locally, or in the provider's own history) ----------------------------
+@app.get("/app/chats")
+async def chat_list():
+    out = chats.list_all()
+    for items in await _each(_history_providers(), lambda p: backends.of(p).chat_list(p)):
+        out += items
+    out.sort(key=lambda c: c.get("updated_at") or 0, reverse=True)
+    return {"chats": out[:300]}
+
+
+@app.get("/app/chats/search")
+async def chat_search(q: str = ""):
+    hits = chats.search(q)
+    if q.strip():
+        for items in await _each(_history_providers(), lambda p: backends.of(p).chat_search(p, q)):
+            hits += items
+    hits.sort(key=lambda c: c.get("updated_at") or 0, reverse=True)
+    return hits
+
+
+@app.post("/app/chats")
+async def chat_save(req: dict):
+    try:
+        rec = chats.save(req)
+    except ValueError as e:
+        raise ProxyError(str(e), 400) from e
+    return {"id": rec["id"], "updated_at": rec["updated_at"], "chat": rec}
+
+
+def _chat_candidates(provider: str | None) -> list[dict]:
+    if provider:
+        p = providers.get(provider)
+        return [p] if p and providers.logged_in(p) and backends.of(p).history else []
+    return _history_providers()
+
+
+@app.get("/app/chats/{cid}")
+async def chat_get(cid: str, provider: str | None = None):
+    if cid.startswith("local-"):
+        c = chats.load(cid)
+        if not c:
+            raise ProxyError("Chat nicht gefunden.", 404)
+        return {"id": cid, "title": c.get("title") or "Chat", "updated_at": c.get("updated_at") or 0,
+                "model": c.get("model"), "provider": c.get("provider"), "source": "local", "chat": c}
+    for p in _chat_candidates(provider):
+        try:
+            return await backends.of(p).chat_get(p, cid)
+        except ProxyError:
+            continue
+    raise ProxyError("Chat nicht gefunden.", 404)
+
+
+@app.delete("/app/chats/{cid}")
+async def chat_delete(cid: str, provider: str | None = None):
+    if cid.startswith("local-"):
+        chats.delete(cid)
+        return {"ok": True}
+    for p in _chat_candidates(provider):
+        try:
+            await backends.of(p).chat_delete(p, cid)
+            return {"ok": True}
+        except ProxyError:
+            continue
+    raise ProxyError("Chat nicht gefunden.", 404)
+
+
+# ---- app: usage -------------------------------------------------------------------------------
+@app.get("/app/usage")
+async def usage_report():
+    return usage.report({p["id"]: p.get("name") for p in providers.load()})
+
+
+@app.post("/app/usage/backfill")
+async def backfill():
+    """One-off: take token/cost figures from earlier Open WebUI chats (older than live capture)."""
+    meta = usage.meta()
+    if meta["backfilled"]:
+        return {"added": 0}
+    p = providers.default_openwebui()
+    added = 0
+    if p and providers.logged_in(p):
+        added = await backends.of(p).backfill(p, meta["since"])
+    meta["backfilled"] = True
+    usage.save_meta(meta)
+    return {"added": added}
+
+
+@app.get("/app/budget")
+async def budget():
+    p = providers.default_openwebui()
+    if not p or not providers.logged_in(p):
+        return {"text": None, "at": None, "percent": None}
+    return await backends.of(p).budget(p)
+
+
+def _conn(conn_id: str | None) -> dict | None:
+    """Saved SSH connection for an id (None = this machine)."""
+    if not conn_id:
+        return None
+    c = remote.get(conn_id)
+    if not c:
+        raise tools.ToolError("unknown SSH connection (it may have been removed)")
+    return c
 
 
 class ToolReq(BaseModel):
     workdir: str
     name: str
     args: dict = {}
+    conn: str | None = None
 
 
 @app.post("/app/tool")
 async def run_tool(req: ToolReq):
+    t0 = time.monotonic()
     try:
-        output, meta = await tools.run(req.workdir, req.name, req.args)
+        output, meta = await tools.run(req.workdir, req.name, req.args, _conn(req.conn))
+        trace.log("tool", name=req.name, args=req.args, output=output, t=round(time.monotonic() - t0, 1), cap=600)
         return {"output": output, "is_error": False, "meta": meta}
     except tools.ToolError as e:
+        trace.log("tool", name=req.name, args=req.args, error=str(e), t=round(time.monotonic() - t0, 1), cap=600)
         return {"output": f"Error: {e}", "is_error": True}
 
 
-def _agg(rows: list[dict]) -> dict:
-    models: dict[str, dict] = {}
-    tot = {"requests": 0, "in": 0, "out": 0, "cost": 0.0}
-    for r in rows:
-        m = models.setdefault(r["model"], {"model": r["model"], "requests": 0, "in": 0, "out": 0, "cost": 0.0})
-        for d in (m, tot):
-            d["requests"] += 1; d["in"] += r["in"]; d["out"] += r["out"]; d["cost"] += r["cost"]
-    return {**tot, "models": sorted(models.values(), key=lambda m: -(m["in"] + m["out"]))}
+@app.post("/app/log")
+async def app_log(req: dict):
+    """Debug lines from the app window: its errors and what it made of each answer."""
+    trace.log("app " + str(req.get("what") or ""), data=req.get("data"))
+    return {"ok": True}
 
 
-@app.get("/app/usage")
-async def usage():
-    rows = []
-    try:
-        rows = [json.loads(l) for l in LEDGER.read_text().splitlines() if l.strip()]
-    except (OSError, ValueError):
-        pass
-    meta = _meta()
-    now = datetime.datetime.now()
-    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).timestamp()
-    days: dict[str, int] = {}
-    for r in rows:
-        d = datetime.date.fromtimestamp(r["ts"]).isoformat()
-        days[d] = days.get(d, 0) + r["in"] + r["out"]
-    last30 = [(datetime.date.today() - datetime.timedelta(days=i)).isoformat() for i in range(29, -1, -1)]
-    return {"since": meta["since"], "backfilled": meta["backfilled"],
-            "month": {**_agg([r for r in rows if r["ts"] >= month_start]), "label": now.strftime("%Y-%m")},
-            "total": _agg(rows), "days": [{"date": d, "tokens": days.get(d, 0)} for d in last30]}
-
-
-async def _upstream_get(path: str):
-    """GET against Open WebUI with the stored session; re-authenticates once on expiry."""
-    for attempt in (0, 1):
-        r = await client.get(f"/api/{path}", headers={"Authorization": f"Bearer {_state['token']}", "Cookie": auth.cookie_header(_state),
-                                                      "Accept-Encoding": "identity"})
-        if attempt == 0 and _expired(r):
-            await _refresh(_state["token"])
-            continue
-        return r
-
-
-async def _all_chat_ids(limit: int) -> list[str]:
-    ids: list[str] = []
-    for page in range(1, 11):
-        r = await _upstream_get(f"v1/chats/?page={page}")
-        batch = r.json() if r.status_code == 200 else []
-        if not batch:
-            break
-        ids += [c["id"] for c in batch]
-        if len(ids) >= limit:
-            break
-    return ids[:limit]
-
-
-@app.post("/app/usage/backfill")
-async def backfill():
-    """One-off: take token/cost figures from earlier Open WebUI chats (older than live capture)."""
-    if not _state:
-        return JSONResponse({"error": {"message": "not logged in"}}, 401)
-    meta = _meta()
-    if meta["backfilled"]:
-        return {"added": 0}
-    sem = asyncio.Semaphore(5)
-    added = 0
-
-    async def one(cid: str) -> int:
-        async with sem:
-            r = await _upstream_get(f"v1/chats/{cid}")
-        if r.status_code != 200:
-            return 0
-        n = 0
-        for m in (r.json().get("chat", {}).get("history", {}).get("messages", {}) or {}).values():
-            u, ts = m.get("usage"), m.get("timestamp") or 0
-            if m.get("role") == "assistant" and isinstance(u, dict) and ts and ts < meta["since"]:
-                _record(m.get("model"), u, src="chat", ts=ts)
-                n += 1
-        return n
-
-    try:
-        added = sum(await asyncio.gather(*[one(c) for c in await _all_chat_ids(300)]))
-    except auth.LoginRequired as e:
-        return JSONResponse({"error": {"message": str(e)}}, 401)
-    meta["backfilled"] = True
-    _save_meta(meta)
-    return {"added": added}
-
-
-@app.get("/app/budget")
-async def budget():
-    """Latest 'Budgetverbrauch diesen Monat' status the server attached to one of the user's replies."""
-    if not _state:
-        return JSONResponse({"error": {"message": "not logged in"}}, 401)
-    try:
-        for cid in await _all_chat_ids(15):          # newest chats first
-            r = await _upstream_get(f"v1/chats/{cid}")
-            if r.status_code != 200:
-                continue
-            hits = []
-            for m in (r.json().get("chat", {}).get("history", {}).get("messages", {}) or {}).values():
-                for st in m.get("statusHistory") or []:
-                    text = st.get("description") or ""
-                    if "Budgetverbrauch" in text:
-                        hits.append((m.get("timestamp") or 0, text))
-            if hits:
-                ts, text = max(hits)
-                pct = re.search(r"(\d+(?:[.,]\d+)?)\s*%", text)
-                return {"text": text, "at": ts, "percent": float(pct.group(1).replace(",", ".")) if pct else None}
-    except auth.LoginRequired as e:
-        return JSONResponse({"error": {"message": str(e)}}, 401)
-    return {"text": None, "at": None, "percent": None}
-
-
-_previews: dict[str, Path] = {}  # unguessable id -> working folder
+_previews: dict[str, tuple[Path | str, str | None]] = {}  # unguessable id -> (working folder, SSH connection id)
 
 
 @app.post("/app/preview")
 async def preview_session(req: dict):
+    conn_id = req.get("conn") or None
     try:
-        root = tools._root(req.get("workdir", ""))
+        c = _conn(conn_id)
+        if c:
+            await remote.fs_list(c, req.get("workdir", ""))        # fails if the folder does not exist
+            root = str(req.get("workdir", ""))
+        else:
+            root = tools._root(req.get("workdir", ""))
     except tools.ToolError as e:
         return JSONResponse({"error": {"message": str(e)}}, 400)
-    pid = next((k for k, v in _previews.items() if v == root), None) or secrets.token_urlsafe(16)
-    _previews[pid] = root
+    pid = next((k for k, v in _previews.items() if v == (root, conn_id)), None) or secrets.token_urlsafe(16)
+    _previews[pid] = (root, conn_id)
     return {"id": pid}
 
 
 @app.get("/app/preview/{pid}/{path:path}")
 async def preview(pid: str, path: str):
     """Serve files of the working folder so a previewed HTML page can load its own css/js/images."""
-    root = _previews.get(pid)
-    if not root:
+    entry = _previews.get(pid)
+    if not entry:
         return JSONResponse({"error": {"message": "unknown preview"}}, 404)
+    root, conn_id = entry
+    headers = {"Content-Security-Policy": "sandbox allow-scripts allow-forms", "Cache-Control": "no-store",
+               "Access-Control-Allow-Origin": "*"}
+    if conn_id:                                                        # file lives on the SSH host
+        try:
+            data = await remote.read_bytes(_conn(conn_id), root, path)
+        except tools.ToolError as e:
+            return JSONResponse({"error": {"message": str(e)}}, 403 if "outside" in str(e) else 404)
+        ctype = mimetypes.guess_type(path)[0] or ("text/html" if data.lstrip()[:1] == b"<" else "application/octet-stream")
+        return Response(data, media_type=ctype, headers=headers)
     try:
         f = tools._path(root, path or ".")
     except tools.ToolError:
@@ -393,8 +478,7 @@ async def preview(pid: str, path: str):
     if not f.is_file():
         return JSONResponse({"error": {"message": "not found"}}, 404)
     # CSP sandbox keeps the page in an opaque origin even if it is opened as a top-level document
-    return FileResponse(f, headers={"Content-Security-Policy": "sandbox allow-scripts allow-forms", "Cache-Control": "no-store",
-                                   "Access-Control-Allow-Origin": "*"})  # preview pages may fetch() their own files
+    return FileResponse(f, headers=headers)  # preview pages may fetch() their own files
 
 
 def _winsize(fd: int, rows: int, cols: int) -> None:
@@ -402,7 +486,7 @@ def _winsize(fd: int, rows: int, cols: int) -> None:
 
 
 @app.websocket("/app/term")
-async def terminal(ws: WebSocket, workdir: str = "", cols: int = 80, rows: int = 24):
+async def terminal(ws: WebSocket, workdir: str = "", cols: int = 80, rows: int = 24, conn: str = ""):
     """Interactive shell on a PTY. This is arbitrary code execution as the user, so the
     WebSocket handshake must come from our own page: browsers send Origin on every WebSocket
     and the HTTP middleware does not cover them."""
@@ -410,14 +494,23 @@ async def terminal(ws: WebSocket, workdir: str = "", cols: int = 80, rows: int =
     if ws.headers.get("host") not in _ok_hosts() or origin.split("//", 1)[-1] not in _ok_hosts():
         await ws.close(code=1008)
         return
+    try:
+        c = _conn(conn)
+    except tools.ToolError:
+        await ws.close(code=1008)
+        return
     await ws.accept()
-    cwd = Path(workdir).expanduser() if workdir else Path.home()
-    if not cwd.is_dir():
-        cwd = Path.home()
+    if c:                                  # shell on the SSH host (ssh -tt inside the PTY)
+        shell, cwd = remote.terminal_argv(c, workdir), Path.home()
+    else:
+        shell = [os.environ.get("SHELL") or "/bin/bash"]
+        cwd = Path(workdir).expanduser() if workdir else Path.home()
+        if not cwd.is_dir():
+            cwd = Path.home()
     master, slave = os.openpty()
     _winsize(master, rows, cols)
     proc = subprocess.Popen(
-        [os.environ.get("SHELL") or "/bin/bash"], stdin=slave, stdout=slave, stderr=slave, cwd=cwd,
+        shell, stdin=slave, stdout=slave, stderr=slave, cwd=cwd,
         env={**os.environ, "TERM": "xterm-256color", "COLORTERM": "truecolor"}, close_fds=True,
         start_new_session=True, preexec_fn=lambda: fcntl.ioctl(0, termios.TIOCSCTTY, 0))  # make the PTY its controlling terminal
     os.close(slave)
@@ -479,30 +572,70 @@ async def terminal(ws: WebSocket, workdir: str = "", cols: int = 80, rows: int =
 
 
 @app.get("/app/file")
-async def file(workdir: str, path: str):
+async def file(workdir: str, path: str, conn: str = ""):
     try:
+        c = _conn(conn)
+        if c:
+            return {"content": await remote.read_raw(c, workdir, path)}
         return {"content": await asyncio.to_thread(tools.read_raw, workdir, path)}
     except (tools.ToolError, OSError) as e:
         return JSONResponse({"error": {"message": str(e)}}, 400)
 
 
 @app.get("/app/ls")
-async def ls(workdir: str, path: str = "."):
+async def ls(workdir: str, path: str = ".", conn: str = ""):
     try:
+        c = _conn(conn)
+        if c:
+            return {"entries": await remote.ls_entries(c, workdir, path)}
         return {"entries": await asyncio.to_thread(tools.ls, workdir, path)}
     except (tools.ToolError, OSError) as e:
         return JSONResponse({"error": {"message": str(e)}}, 400)
 
 
 @app.get("/app/fs")
-async def fs(path: str = ""):
+async def fs(path: str = "", conn: str = ""):
     """Directory listing for the folder picker."""
+    try:
+        c = _conn(conn)
+        if c:
+            return await remote.fs_list(c, path)
+    except tools.ToolError as e:
+        return JSONResponse({"error": {"message": str(e)}}, 400)
     p = Path(path or "~").expanduser().resolve()
     try:
         dirs = sorted((d.name for d in p.iterdir() if d.is_dir() and not d.name.startswith(".")), key=str.lower)
     except OSError as e:
         return JSONResponse({"error": {"message": str(e)}}, 400)
     return {"path": str(p), "parent": str(p.parent) if p.parent != p else None, "dirs": dirs}
+
+
+@app.get("/app/ssh")
+async def ssh_list():
+    return {"connections": remote.load()}
+
+
+@app.post("/app/ssh")
+async def ssh_add(req: dict):
+    try:
+        return remote.add(req)
+    except tools.ToolError as e:
+        return JSONResponse({"error": {"message": str(e)}}, 400)
+
+
+@app.delete("/app/ssh/{conn_id}")
+async def ssh_remove(conn_id: str):
+    remote.remove(conn_id)
+    return {"ok": True}
+
+
+@app.post("/app/ssh/test")
+async def ssh_test(req: dict):
+    """Try a connection (not saved): who/where/what, and which tools the host lacks."""
+    try:
+        return await remote.test(req)
+    except tools.ToolError as e:
+        return {"ok": False, "error": str(e)}
 
 
 app.mount("/", StaticFiles(directory=Path(__file__).parent / "static", html=True), name="ui")

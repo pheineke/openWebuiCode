@@ -50,8 +50,12 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--text);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;display:flex}
 button{font:inherit;color:inherit;cursor:pointer}
-aside{width:270px;background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;flex:none}
-.brand{height:40px;display:flex;align-items:center;padding:0 16px;font-weight:650;letter-spacing:.2px}
+aside{width:270px;background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;flex:none;transition:transform .16s ease,box-shadow .16s ease}
+.brand{height:40px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 8px 0 16px;font-weight:650;letter-spacing:.2px}
+/* collapsed sidebar leaves the layout; hovering its opener slides it in over the content */
+html.sb-collapsed aside{position:fixed;left:0;top:0;bottom:0;z-index:20;transform:translateX(-102%)}
+html.sb-collapsed.sb-peek aside{transform:translateX(0);box-shadow:0 0 40px #0009}
+html.sb-collapsed #topbar{padding-left:10px}
 .new{margin:0 12px 10px;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--panel);text-align:left;font-weight:550}
 .new:hover{border-color:var(--accent)}
 #chats{flex:1;overflow:auto;padding:0 8px}
@@ -277,12 +281,41 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
 .hljs-meta{color:var(--h-com)}
 #altLogin{display:none}
 .shell #altLogin{display:block!important}
+.menu .item.has-fly{position:relative}
+.menu .fly{display:none;position:absolute;left:calc(100% + 6px);bottom:-5px;min-width:260px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:4px;box-shadow:0 8px 28px #0004}
+.menu .fly::before{content:"";position:absolute;left:-10px;top:0;bottom:0;width:10px}   /* keeps the hover alive while crossing the gap */
+.menu .item.has-fly:hover>.fly,.menu .item.has-fly.open>.fly{display:block}
+.menu .fly .item{cursor:pointer}
+.menu .item .x{border:0;background:none;color:var(--muted);padding:0 4px;visibility:hidden;font-size:12px}
+.menu .item:hover .x{visibility:visible}.menu .item .x:hover{color:var(--danger)}
+.sshcard{width:min(520px,94vw);max-height:92vh;overflow:auto}
+.sshcard label{display:flex;flex-direction:column;gap:4px;font-weight:550;font-size:13px}
+.sshcard label.chk{flex-direction:row;gap:10px;align-items:flex-start}
+.sshcard label.chk input{margin-top:3px}
+.sshcard small{display:block;font-weight:400;color:var(--muted);font-size:12px}
+.sshcard input[type=text],.sshcard input:not([type]){font:inherit;font-size:14px}
+.sres{display:none;white-space:pre-wrap;font-size:13px;padding:9px 11px;border-radius:8px}
+.sres.ok{display:block;background:color-mix(in srgb,#3fb950 16%,transparent)}
+.sres.err{display:block;background:color-mix(in srgb,var(--danger) 16%,transparent);color:var(--danger)}
+.sres.busy{display:block;color:var(--muted)}
 @media(max-width:700px){aside{display:none}}
+
+.chat .d{margin-left:6px;color:var(--muted);font-size:11px;font-weight:400}
+.providerCard{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.providerCard small{color:var(--muted)}
+.pform{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px 0 4px}
+.pform label{display:flex;flex-direction:column;gap:4px;font-weight:550;font-size:13px}
+.pform input,.pform select{font:inherit;font-size:14px;font-weight:400;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+.pform .wide{grid-column:1/-1}
+#loginProviders button,.prow button{border:1px solid var(--line);background:var(--btn);color:var(--fg);padding:7px 12px;border-radius:8px;font:inherit;font-size:13px;cursor:pointer}
+#loginProviders button:hover,.prow button:hover{border-color:var(--accent)}
+#loginProviders .ucard button{background:var(--accent);color:var(--accent-fg);border-color:transparent}
+#loginProviders .ucard button.alt{background:transparent;color:var(--muted);border-color:var(--line);font-size:12px;padding:6px 9px}
 </style>
 </head>
 <body>
 <aside>
-  <div class="brand">EDU-KI Code</div>
+  <div class="brand"><span>EDU-KI Code</span><button class="tbtn" id="sbToggle" type="button" title="Seitenleiste einklappen"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button></div>
   <button class="new" id="new">+ Neuer Chat</button>
   <div id="chats"></div>
   <div class="me">
@@ -297,7 +330,7 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
   </div>
 </aside>
 <div id="content">
-  <div id="topbar"><div class="ttl" id="ttl"></div>
+  <div id="topbar"><button class="tbtn" id="sbOpen" type="button" title="Seitenleiste (Hover: ansehen, Klick: öffnen)" style="display:none"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button><div class="ttl" id="ttl"></div>
   <div id="tools">
     <button class="tbtn" id="ttoggle" type="button" title="Terminal"><svg viewBox="0 0 24 24"><path d="M4 17l6-6-6-6M12 19h8"/></svg></button>
     <button class="tbtn" id="ptoggle" type="button" title="Dateien" style="display:none"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M14 4v16"/></svg></button>
@@ -310,10 +343,7 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
     <div class="chips">
       <div class="menuwrap">
         <button class="chip" id="mode" type="button"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></svg><span>Lokal</span></button>
-        <div class="menu" id="modeMenu">
-          <div class="item" data-mode="local"><span>Lokal</span><span>✓</span></div>
-          <div class="off"><span>SSH</span><span>bald</span></div>
-        </div>
+        <div class="menu" id="modeMenu"></div>
       </div>
       <div class="menuwrap">
         <button class="chip" id="folder" type="button"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>Kein Ordner</span></button>
@@ -348,7 +378,7 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
 </div>
 </div>
 <div class="overlay" id="settings"><div class="sbig">
-  <div class="snav"><h4>Einstellungen</h4><div class="act" data-page="appearance">Darstellung</div><div data-page="usage">Nutzung</div></div>
+  <div class="snav"><h4>Einstellungen</h4><div class="act" data-page="appearance">Darstellung</div><div data-page="providers">Anbieter</div><div data-page="usage">Nutzung</div></div>
   <div class="scont" id="scont"></div>
   <button class="sx" id="sclose" title="Schließen">✕</button>
 </div></div>
@@ -356,18 +386,31 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
   <input id="sq" placeholder="Chats durchsuchen…" autocomplete="off" spellcheck="false">
   <div id="sres"></div>
 </div></div>
+<div class="overlay" id="sshModal"><div class="pcard sshcard">
+  <h3>SSH-Verbindung hinzufügen</h3>
+  <p class="umuted" style="margin:0">Der Agent arbeitet dann auf einem anderen Rechner. Genutzt wird dein <code>ssh</code> mit
+    <code>~/.ssh/config</code>, Schlüsseln und ssh-agent. Passwörter werden nicht abgefragt.</p>
+  <label>Name<input id="sName" placeholder="Arbeitslaptop" autocomplete="off"><small>Ein Anzeigename für diese Verbindung.</small></label>
+  <label>SSH-Host<input id="sHost" placeholder="user@hostname" autocomplete="off" spellcheck="false"><small>user@meinserver.de oder ein Host aus ~/.ssh/config.</small></label>
+  <label>SSH-Port<input id="sPort" placeholder="22" inputmode="numeric" autocomplete="off"><small>Leer lassen für 22 bzw. deine SSH-Konfiguration.</small></label>
+  <label>SSH-Schlüssel (optional)<input id="sKey" placeholder="~/.ssh/id_ed25519" autocomplete="off" spellcheck="false"><small>Pfad zu einem privaten Schlüssel. Leer lassen: deine Konfiguration oder der ssh-agent.</small></label>
+  <label>Startordner (optional)<input id="sFolder" placeholder="~" autocomplete="off" spellcheck="false"><small>Ordner auf dem Server, der zuerst vorgeschlagen wird. Leer lassen: dein Home-Verzeichnis.</small></label>
+  <label class="chk"><input type="checkbox" id="sAccept"><span>Hostschlüssel beim ersten Verbinden akzeptieren<small>Für einen neuen Server. Ändert sich der Schlüssel später, wird die Verbindung weiter abgelehnt. Nur im eigenen oder vertrauten Netz nutzen.</small></span></label>
+  <div id="sResult" class="sres"></div>
+  <div class="prow"><button id="sTest">Verbindung testen</button><span style="flex:1"></span><button id="sCancel">Abbrechen</button><button class="ok" id="sAdd">Hinzufügen</button></div>
+</div></div>
 <div class="overlay" id="picker"><div class="pcard">
   <h3>Arbeitsordner wählen</h3>
   <input id="pPath" spellcheck="false">
   <div id="pList"></div>
   <div class="prow"><button id="pNone">Ohne Ordner</button><button id="pCancel">Abbrechen</button><button class="ok" id="pOk">Diesen Ordner wählen</button></div>
 </div></div>
-<div id="login"><div class="card">
-  <h1>EDU-KI-RLP</h1>
-  <p>Melde dich mit deinem Hochschul-Login (Shibboleth) an. Deine Zugangsdaten gehen nur an deine Hochschule.</p>
-  <button id="loginBtn">Mit Hochschul-Login anmelden</button>
+<div id="login"><div class="card" style="max-width:520px">
+  <h1>Anmelden</h1>
+  <p>Wähle einen Anbieter. Die Anmeldung läuft im Browser; Zugangsdaten gehen nur an den Anbieter.</p>
+  <div id="loginProviders" style="display:flex;flex-direction:column;gap:8px;text-align:left"></div>
   <p id="loginMsg" style="margin-top:14px;font-size:13px"></p>
-  <p id="altLogin" style="font-size:12px;margin:0"><a href="#" id="altLoginLink" style="color:var(--muted)">Stattdessen im Chromium-Fenster anmelden</a></p>
+  <p style="font-size:12px;margin:14px 0 0"><a href="#" id="loginSettings" style="color:var(--muted)">Anbieter verwalten</a></p>
 </div></div>
 
 <script>
@@ -388,45 +431,77 @@ async function api(path, opts = {}) {
   return r.json();
 }
 const json = (method, body) => ({method, headers: {"content-type": "application/json"}, body: JSON.stringify(body)});
+let debugLog = false;     // server started with --debug: report what the app sees to its log
+const applog = (what, data) => { if (debugLog) fetch("/app/log", json("POST", {what, data})).catch(() => {}); };
+window.addEventListener("error", e => applog("js error", `${e.message} (${e.filename}:${e.lineno})`));
+window.addEventListener("unhandledrejection", e => applog("js error", String(e.reason?.stack || e.reason)));
 
 // ---- login -------------------------------------------------------------
-function showLogin(msg = "") { $("login").classList.add("on"); $("loginMsg").textContent = msg; }
 const shellPost = o => { try { window.webkit.messageHandlers.shell.postMessage(JSON.stringify(o)); return true; } catch { return false; } };
-// In the native window the login runs in the window itself; elsewhere (or on request) a Chromium window is used.
-$("loginBtn").onclick = () => {
-  if (shellPost({login: true})) { $("loginMsg").textContent = "Die Anmeldung läuft im Fenster …"; return; }
-  chromiumLogin();
-};
-$("altLoginLink").onclick = e => { e.preventDefault(); chromiumLogin(); };
-async function chromiumLogin() {
-  $("loginBtn").disabled = true;
+let loginProviders = [], providerTypes = {};
+const inShell = () => document.documentElement.classList.contains("shell");
+const providerState = p => p.logged_in ? " · angemeldet" : p.expired ? " · Sitzung abgelaufen" : "";
+function showLogin(msg = "") { $("login").classList.add("on"); $("loginMsg").textContent = msg; renderLoginProviders(); }
+async function fetchProviders() {
+  const d = await (await fetch("/app/providers")).json();
+  providerTypes = d.types || {};
+  return d.providers || [];
+}
+async function renderLoginProviders() {
+  const box = $("loginProviders");
+  try {
+    loginProviders = await fetchProviders();
+    box.innerHTML = loginProviders.length ? loginProviders.map(p => `
+      <div class="ucard" style="margin:0;display:flex;align-items:center;gap:10px">
+        <div style="flex:1"><b>${esc(p.name)}</b><br><small class="umuted">${esc(providerTypeLabel(p.type))}${providerState(p)}</small></div>
+        ${p.login ? `<button data-pid="${esc(p.id)}">${p.logged_in ? "Erneut anmelden" : "Anmelden"}</button>` : `<small class="umuted">${p.logged_in ? "" : "API-Schlüssel fehlt"}</small>`}
+        ${p.login === "window" && inShell() ? `<button data-alt="${esc(p.id)}" class="alt" title="Anmeldung im Chromium-Fenster statt in der App">Chromium</button>` : ""}
+      </div>`).join("") : `<p class="umuted">Noch kein Anbieter eingerichtet. Öffne „Anbieter verwalten“.</p>`;
+    box.querySelectorAll("button[data-pid]").forEach(b => b.onclick = () => loginProvider(b.dataset.pid));
+    box.querySelectorAll("button[data-alt]").forEach(b => b.onclick = () => chromiumLogin(b.dataset.alt));
+  } catch { box.innerHTML = `<p class="umuted">Anbieter konnten nicht geladen werden.</p>`; }
+}
+// "window" providers log in inside the app window; "browser" ones (Google/Apple sign-in) in Chromium
+const windowLogin = pid => (loginProviders.find(p => p.id === pid) || {}).login === "window" && shellPost({login: true, provider: pid});
+function loginProvider(pid) {
+  if (windowLogin(pid)) { $("loginMsg").textContent = "Die Anmeldung läuft im Fenster …"; return; }
+  chromiumLogin(pid);
+}
+async function chromiumLogin(pid) {
   $("loginMsg").textContent = "Browserfenster geöffnet – bitte dort anmelden…";
   try {
-    await api("/app/login", {method: "POST"});
+    await api(`/app/providers/${encodeURIComponent(pid)}/login`, {method: "POST"});
     $("login").classList.remove("on");
     await boot();
   } catch (e) { $("loginMsg").textContent = "Anmeldung fehlgeschlagen oder abgelaufen. Bitte erneut versuchen."; }
-  $("loginBtn").disabled = false;
 }
+$("loginSettings").onclick = e => { e.preventDefault(); $("login").classList.remove("on"); openSettings("providers"); };
 $("logout").onclick = async () => { await fetch("/app/logout", {method: "POST"}); shellPost({logout: true}); chat = null; showLogin(); };
 
 // ---- models / chat list ------------------------------------------------
+let MODEL_META = {};
+const modelProvider = id => (MODEL_META[id] || {}).provider || (id || "").split("/")[0];
+const modelName = id => { const m = MODEL_META[id]; return m ? m.model : ((id || "").split("/").length > 1 ? id.split("/").slice(1).join("/") : id); };
+const modelIsOW = id => { const m = MODEL_META[id]; return !m || m.type === "openwebui"; };
+const owq = pid => pid ? `?provider=${encodeURIComponent(pid)}` : "";
 async function loadModels() {
-  const {data} = await api(OW + "models");
+  const r = await api("/app/models");
   const sel = $("model"), keep = localStorage.model;
-  sel.innerHTML = data.map(m => `<option value="${esc(m.id)}">${esc(m.name || m.id)}</option>`).join("");
-  sel.value = data.some(m => m.id === keep) ? keep : (data.find(m => /qwen|deepseek/.test(m.id)) || data[0]).id;
+  MODEL_META = {}; const opts = [];
+  for (const p of r.providers || []) for (const m of p.models || []) {
+    MODEL_META[m.id] = {provider: p.id, providerName: p.name, type: p.type, model: m.model || m.id};
+    opts.push(`<option value="${esc(m.id)}">${esc(p.name)} — ${esc(m.name || m.id)}</option>`);
+  }
+  sel.innerHTML = opts.join("");
+  const ids = Object.keys(MODEL_META);
+  sel.value = ids.includes(keep) ? keep : (ids[0] || "");
+  if (sel.refreshLabel) sel.refreshLabel();
 }
-$("model").onchange = () => { localStorage.model = $("model").value; if (chat) chat.model = $("model").value; };
+$("model").onchange = () => { localStorage.model = $("model").value; if (chat) { chat.model = $("model").value; chat.provider = modelProvider(chat.model); } };
 
 async function loadList() {
-  const all = [];
-  for (let pg = 1; pg <= 20; pg++) {                      // every page, not just the first
-    const r = await api(OW + `v1/chats/?page=${pg}`);
-    if (!r.length) break;
-    all.push(...r);
-  }
-  list = all; renderList();
+  const r = await api("/app/chats");
+  list = r.chats || []; renderList();
 }
 const SEARCH_ICON = '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
 function renderList() {
@@ -448,12 +523,14 @@ function renderList() {
     for (const c of items) {
       const el = document.createElement("div");
       el.className = "chat" + (chat && chat.id === c.id ? " active" : "");
-      el.innerHTML = `<span>${esc(c.title || "Chat")}</span><button title="Löschen">✕</button>`;
-      el.onclick = () => openChat(c.id);
+      const tag = c.source === "local" ? `<small class="d">lokal</small>` : (c.provider_name ? `<small class="d">${esc(c.provider_name)}</small>` : "");
+      el.innerHTML = `<span>${esc(c.title || "Chat")}${tag}</span><button title="Löschen">✕</button>`;
+      el.onclick = () => openChat(c.id, c.provider, c.source);
       el.querySelector("button").onclick = async e => {
         e.stopPropagation();
         if (!confirm(`„${c.title}“ löschen?`)) return;
-        await api(OW + `v1/chats/${c.id}`, {method: "DELETE"});
+        const url = c.source === "local" ? `/app/chats/${encodeURIComponent(c.id)}` : OW + `v1/chats/${c.id}${owq(c.provider)}`;
+        await api(url, {method: "DELETE"});
         if (chat && chat.id === c.id) newChat();
         loadList();
       };
@@ -482,7 +559,85 @@ function setAppearance(patch) {
 }
 function renderSettings() {
   document.querySelectorAll(".snav [data-page]").forEach(d => d.classList.toggle("act", d.dataset.page === settingsPage));
-  if (settingsPage === "usage") renderUsage(); else renderAppearance();
+  if (settingsPage === "usage") renderUsage();
+  else if (settingsPage === "providers") renderProviders();
+  else renderAppearance();
+}
+const providerTypeLabel = t => (providerTypes[t] || {}).label || t;
+const BASE_HINTS = {openwebui: "https://chat.example.de", openai: "https://api.openai.com/v1"};
+async function renderProviders() {
+  const box = $("scont"); box.innerHTML = '<h2>Anbieter</h2><div class="pmsg">Lädt…</div>';
+  let list;
+  try { list = loginProviders = await fetchProviders(); } catch (e) { box.innerHTML += `<div class="pmsg err">${esc(String(e.message))}</div>`; return; }
+  const rows = list.map(p => `<div class="ucard">
+    <div class="uhead"><b>${esc(p.name)}</b><span class="umuted">${esc(providerTypeLabel(p.type))}${providerState(p)}</span></div>
+    <p class="umuted" style="margin:6px 0;word-break:break-all">${esc(p.base_url || "")}${p.user && (p.user.email || p.user.name) ? " · " + esc(p.user.email || p.user.name) : ""}</p>
+    ${Array.isArray(p.emulate_tools) ? `<div class="pform"><label class="wide">Tools über den Prompt (Modell-IDs, Komma-getrennt)
+      <input data-emu="${esc(p.id)}" value="${esc(p.emulate_tools.join(", "))}" placeholder="z. B. claude-sonnet-5-rptu" spellcheck="false">
+      <small class="umuted" style="font-weight:400">Für Modelle, die keine Tool-Aufrufe bekommen: Die Tools werden im Prompt beschrieben und die Antwort ausgewertet.</small></label></div>` : ""}
+    <div class="prow">
+      ${p.login ? `<button data-act="login" data-pid="${esc(p.id)}">${p.logged_in ? "Erneut anmelden" : "Anmelden"}</button>` : ""}
+      <button data-act="test" data-pid="${esc(p.id)}">Testen</button>
+      <span style="flex:1"></span>
+      ${p.logged_in || p.expired ? `<button data-act="logout" data-pid="${esc(p.id)}">Abmelden</button>` : ""}
+      <button data-act="remove" data-pid="${esc(p.id)}" style="color:var(--danger)">Entfernen</button>
+    </div></div>`).join("");
+  const types = Object.entries(providerTypes);
+  box.innerHTML = `<h2>Anbieter</h2>${rows || '<p class="umuted">Noch kein Anbieter eingerichtet.</p>'}
+    <div class="ucard"><div class="uhead"><b>Anbieter hinzufügen</b></div>
+      <div class="pform">
+        <label>Typ<select id="pType">${types.map(([k, t]) => `<option value="${esc(k)}">${esc(t.label)}</option>`).join("")}</select></label>
+        <label data-f="name">Name<input id="pName" placeholder="optional"></label>
+        <label data-f="base_url" class="wide">Basis-URL<input id="pBase"></label>
+        <label data-f="api_key" class="wide">API-Schlüssel (optional bei lokalen Servern)<input id="pKey" type="password" autocomplete="off"></label>
+        <label data-f="models" class="wide">Modelle (Komma-getrennt, optional – sonst vom Server abgefragt)<input id="pModels" placeholder="gpt-4o, o3-mini"></label>
+        <p class="umuted wide" id="pHint" style="margin:0"></p>
+      </div>
+      <div class="prow"><span style="flex:1"></span><button class="ok" id="pAdd">Hinzufügen</button></div>
+    </div>`;
+  box.querySelectorAll("button[data-act]").forEach(b => b.onclick = () => providerAction(b.dataset.act, b.dataset.pid));
+  box.querySelectorAll("input[data-emu]").forEach(i => i.onchange = async () => {
+    try {
+      const r = await api(`/app/providers/${encodeURIComponent(i.dataset.emu)}`, json("PATCH", {emulate_tools: i.value}));
+      i.value = r.provider.emulate_tools.join(", ");
+    } catch (e) { alert(String(e.message)); }
+  });
+  const typeInfo = () => providerTypes[$("pType").value] || {fields: []};
+  const setFields = () => {
+    const t = typeInfo();
+    box.querySelectorAll("label[data-f]").forEach(l => l.style.display = t.fields.includes(l.dataset.f) ? "" : "none");
+    $("pBase").placeholder = t.default_base || BASE_HINTS[$("pType").value] || "https://…";
+    $("pHint").textContent = t.hint || "";
+  };
+  $("pType").onchange = setFields; setFields();
+  $("pAdd").onclick = async () => {
+    const t = typeInfo(), body = {type: $("pType").value};
+    for (const [f, id] of [["name", "pName"], ["base_url", "pBase"], ["api_key", "pKey"], ["models", "pModels"]])
+      if (t.fields.includes(f)) body[f] = $(id).value;
+    if (t.base_required && !body.base_url) return alert("Bitte eine Basis-URL angeben.");
+    try { await api("/app/providers", json("POST", body)); await loadModels(); renderProviders(); }
+    catch (e) { alert(String(e.message)); }
+  };
+}
+async function providerAction(act, pid) {
+  try {
+    if (act === "login") {
+      if (windowLogin(pid)) { closeSettings(); return; }
+      await api(`/app/providers/${encodeURIComponent(pid)}/login`, {method: "POST"});
+      await boot(); renderProviders();
+    } else if (act === "logout") {
+      await api(`/app/providers/${encodeURIComponent(pid)}/logout`, {method: "POST"});
+      shellPost({logout: true});     // the app window's stored site data too, or the next login would not ask
+      await boot(); renderProviders();
+    } else if (act === "remove") {
+      if (!confirm("Diesen Anbieter entfernen?")) return;
+      await api(`/app/providers/${encodeURIComponent(pid)}`, {method: "DELETE"});
+      await loadModels(); renderProviders();
+    } else if (act === "test") {
+      const r = await api(`/app/providers/${encodeURIComponent(pid)}/test`, {method: "POST"});
+      alert(r.ok ? "Verbindung OK" : ("Fehler: " + (r.error || "unbekannt")));
+    }
+  } catch (e) { alert(String(e.message)); }
 }
 const fmtN = n => Math.round(n).toLocaleString("de-DE");
 const fmtCost = c => c === 0 ? "$0" : c < 0.01 ? "$" + c.toFixed(4) : "$" + c.toFixed(2);
@@ -510,7 +665,7 @@ async function renderUsage() {
   const m = u.month, t = u.total, max = Math.max(1, ...u.days.map(d => d.tokens));
   const monthName = new Date(m.label + "-01T12:00").toLocaleDateString("de-DE", {month: "long", year: "numeric"});
   const tile = (l, v) => `<div class="tile"><small>${l}</small><b>${v}</b></div>`;
-  const rows = m.models.length ? m.models.map(x => `<tr><td>${esc(x.model)}</td><td class="n">${fmtN(x.requests)}</td><td class="n">${fmtN(x.in)}</td><td class="n">${fmtN(x.out)}</td><td class="n">${fmtCost(x.cost)}</td></tr>`).join("")
+  const rows = m.models.length ? m.models.map(x => `<tr><td>${esc(x.model)}${x.provider_name ? ` <small class="umuted">${esc(x.provider_name)}</small>` : ""}</td><td class="n">${fmtN(x.requests)}</td><td class="n">${fmtN(x.in)}</td><td class="n">${fmtN(x.out)}</td><td class="n">${fmtCost(x.cost)}</td></tr>`).join("")
     : `<tr><td colspan="5" style="color:var(--muted)">Noch keine Anfragen in diesem Monat.</td></tr>`;
   box.innerHTML = `<h2>Nutzung</h2>${budget}
     <div class="utitle">${esc(monthName)}</div>
@@ -540,6 +695,35 @@ window.onAppearance = () => {   // keep the terminal in step with the theme
   if (typeof term !== "undefined" && term.t) term.t.options.theme = {background: getComputedStyle(document.documentElement).getPropertyValue("--code").trim(), foreground: "#e6edf3"};
 };
 
+// ---- sidebar: open / collapsed, with a hover peek ------------------------------
+let sbState = "open", sbPeek = false, sbTimer = null;
+try { if (localStorage.sidebar === "collapsed") sbState = "collapsed"; } catch {}
+function applySidebar() {
+  const c = sbState === "collapsed", root = document.documentElement;
+  root.classList.toggle("sb-collapsed", c);
+  root.classList.toggle("sb-peek", c && sbPeek);
+  $("sbOpen").style.display = c ? "" : "none";
+  $("sbToggle").title = c ? "Seitenleiste fixieren" : "Seitenleiste einklappen";
+  reportDrag();
+}
+function setSidebar(state) {
+  sbState = state; sbPeek = false; clearTimeout(sbTimer);
+  try { localStorage.sidebar = state; } catch {}
+  applySidebar();
+}
+function peek(on) {
+  clearTimeout(sbTimer);
+  if (on) { if (!sbPeek) { sbPeek = true; applySidebar(); } }
+  else sbTimer = setTimeout(() => { sbPeek = false; applySidebar(); }, 220);   // short grace so the pointer can cross over
+}
+$("sbToggle").onclick = () => setSidebar(sbState === "open" ? "collapsed" : "open");   // while peeking: pin it open
+$("sbOpen").onclick = () => setSidebar("open");
+$("sbOpen").onmouseenter = () => peek(true);
+$("sbOpen").onmouseleave = () => peek(false);
+document.querySelector("aside").onmouseenter = () => { if (sbState === "collapsed") clearTimeout(sbTimer); };
+document.querySelector("aside").onmouseleave = () => { if (sbState === "collapsed" && sbPeek) peek(false); };
+document.querySelector("aside").addEventListener("transitionend", reportDrag);
+
 // ---- search modal ----------------------------------------------------------
 let sHits = [], sIdx = 0, sSeq = 0, sTimer = null;
 function openSearch() { $("search").classList.add("on"); $("sq").value = ""; $("sq").focus(); runSearch(); }
@@ -556,7 +740,7 @@ async function runSearch() {
   let hits;
   if (!q) hits = list.slice(0, 30);
   else {
-    try { hits = await api(OW + `v1/chats/search?text=${enc(q)}`); }
+    try { hits = await api(`/app/chats/search?q=${enc(q)}`); }
     catch { hits = list.filter(c => (c.title || "").toLowerCase().includes(q.toLowerCase())); }   // fall back to titles
   }
   if (seq !== sSeq) return;                              // a newer keystroke superseded this answer
@@ -569,7 +753,7 @@ function renderSearch(q) {
   }).join("") : `<div class="snone">Keine Treffer</div>`;
   const a = $("sres").querySelector(".act"); if (a) a.scrollIntoView({block: "nearest"});
 }
-function pickHit(i) { const c = sHits[i]; if (c) { closeSearch(); openChat(c.id); } }
+function pickHit(i) { const c = sHits[i]; if (c) { closeSearch(); openChat(c.id, c.provider, c.source); } }
 $("sq").oninput = () => { clearTimeout(sTimer); sTimer = setTimeout(runSearch, 180); };
 $("sq").onkeydown = e => {
   if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -581,20 +765,29 @@ $("search").onclick = e => { if (e.target === $("search")) closeSearch(); };
 document.addEventListener("keydown", e => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("search").classList.contains("on") ? closeSearch() : openSearch(); }
   else if ((e.ctrlKey || e.metaKey) && e.key === ",") { e.preventDefault(); openSettings(); }
-  else if (e.key === "Escape") { closeSearch(); closeSettings(); document.querySelectorAll(".menu.on, .umenu.on").forEach(m => m.classList.remove("on")); $("userMenu").classList.remove("on"); $("picker").classList.remove("on"); }
+  else if (e.key === "Escape") { closeSearch(); closeSettings(); $("sshModal").classList.remove("on"); document.querySelectorAll(".menu.on, .umenu.on").forEach(m => m.classList.remove("on")); $("userMenu").classList.remove("on"); $("picker").classList.remove("on"); }
 });
 
 function newChat() {
   if (streaming) streaming.abort();
-  chat = {id: null, title: "Neuer Chat", model: $("model").value, workdir: localStorage.workdir || null, perm: "ask", history: {messages: {}, currentId: null}, updated_at: 0};
+  const model = $("model").value || Object.keys(MODEL_META)[0] || "";
+  chat = {id: null, title: "Neuer Chat", model, provider: modelProvider(model), source: modelIsOW(model) ? "openwebui" : "local",
+          conn: null, workdir: localStorage.workdir || null, perm: "ask", history: {messages: {}, currentId: null}, updated_at: 0};
   resetPanel(); render(); loadList();
 }
 
-async function openChat(id) {
+async function openChat(id, provider, source) {
   if (streaming) streaming.abort();
-  const c = await api(OW + `v1/chats/${id}`);
-  chat = {id, title: c.title, workdir: c.chat.workdir || null, perm: "ask", model: (c.chat.models || [])[0] || $("model").value,
-          history: c.chat.history || {messages: {}, currentId: null}, updated_at: c.updated_at, raw: c.chat};
+  const url = `/app/chats/${encodeURIComponent(id)}` + owq(provider);
+  const c = await api(url);
+  const h = c.chat || {};
+  const savedConn = h.conn && connOf(h.conn) ? h.conn : null;   // a connection that is gone: fall back to local
+  let model = c.model || (h.models || [])[0] || $("model").value;
+  const pid = c.provider || provider;
+  if (!MODEL_META[model] && pid && MODEL_META[`${pid}/${model}`]) model = `${pid}/${model}`;   // Open WebUI stores the bare model name
+  chat = {id, title: c.title || "Chat", conn: savedConn, workdir: h.conn && !savedConn ? null : (h.workdir || null), perm: "ask", model,
+          provider: c.provider || provider || modelProvider(model), source: c.source || source || (modelIsOW(model) ? "openwebui" : "local"),
+          history: h.history || {messages: {}, currentId: null}, updated_at: c.updated_at, raw: h};
   if ([...$("model").options].some(o => o.value === chat.model)) $("model").value = chat.model;
   addRecent(chat.workdir); resetPanel(); render(); loadList();
 }
@@ -617,6 +810,12 @@ const STOP = '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" 
 let userFirst = "";
 const openSet = new Set();
 const enc = encodeURIComponent;
+// ---- SSH: where the chat's folder lives (null = this computer) -----------------------------------
+let connections = [];
+const connOf = id => connections.find(c => c.id === id) || null;
+const cq = () => chat && chat.conn ? "&conn=" + enc(chat.conn) : "";         // query suffix for the file/ls/fs endpoints
+const LAPTOP = '<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></svg>';
+const SERVER = '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/></svg>';
 const norm = p => {   // folder-relative path: models sometimes send ./x or absolute paths
   p = p.replace(/^\.\//, "");
   const w = ((chat && chat.workdir) || "").replace(/\/$/, "");
@@ -665,7 +864,7 @@ const panel = {open: false, tabs: [], active: null, dir: ".", entries: null, pid
 async function ensurePreview() {   // folder files are served so relative css/js/images work in the preview
   if (panel.pidLoading) return;
   panel.pidLoading = true;
-  try { panel.pid = (await api("/app/preview", json("POST", {workdir: chat.workdir}))).id; } catch {}
+  try { panel.pid = (await api("/app/preview", json("POST", {workdir: chat.workdir, conn: chat.conn}))).id; } catch {}
   panel.pidLoading = false; renderPanel();
 }
 function resetPanel() { panel.pid = null; panel.open = false; panel.tabs = []; panel.active = null; panel.dir = "."; panel.entries = null; renderPanel(); syncTerm(); }
@@ -676,13 +875,13 @@ async function openFile(path) {
   await loadTab(t);
 }
 async function loadTab(t) {
-  try { t.content = (await api(`/app/file?workdir=${enc(chat.workdir)}&path=${enc(t.path)}`)).content; t.error = null; t.ver = Date.now(); }
+  try { t.content = (await api(`/app/file?workdir=${enc(chat.workdir)}&path=${enc(t.path)}${cq()}`)).content; t.error = null; t.ver = Date.now(); }
   catch (e) { t.error = String(e.message); }
   renderPanel();
 }
 const refreshTab = path => { const t = panel.tabs.find(x => x.path === path); if (t) loadTab(t); };
 async function loadDir(dir) {
-  try { panel.entries = (await api(`/app/ls?workdir=${enc(chat.workdir)}&path=${enc(dir)}`)).entries; panel.dir = dir; }
+  try { panel.entries = (await api(`/app/ls?workdir=${enc(chat.workdir)}&path=${enc(dir)}${cq()}`)).entries; panel.dir = dir; }
   catch { panel.entries = []; }
   renderPanel();
 }
@@ -734,14 +933,18 @@ $("panel").onclick = e => {
 // page tells it where its tool buttons start; everything left of that is draggable.
 function reportDrag() {
   try {
-    const r = $("tools").getBoundingClientRect();
-    window.webkit.messageHandlers.shell.postMessage(JSON.stringify({dragEnd: Math.max(0, Math.floor(r.left) - 8)}));
+    // The sidebar button is always clickable, so the strip is split around it: left of it, and from it to the tool buttons.
+    const tools = $("tools").getBoundingClientRect();
+    const showing = sbState === "open" || sbPeek;
+    const btn = (showing ? $("sbToggle") : $("sbOpen")).getBoundingClientRect();
+    const segs = [[0, btn.left - 4], [btn.right + 4, tools.left - 8]].map(([x0, x1]) => [Math.max(0, Math.floor(x0)), Math.floor(x1)]).filter(([x0, x1]) => x1 > x0);
+    window.webkit.messageHandlers.shell.postMessage(JSON.stringify({drag: segs}));
   } catch {}
 }
 addEventListener("resize", reportDrag);
 
 // ---- terminal tile + resizing --------------------------------------------
-const term = {open: false, t: null, fit: null, ws: null, workdir: "", exited: false};
+const term = {open: false, t: null, fit: null, ws: null, workdir: "", conn: "", exited: false};
 let termH = +localStorage.termH || 300;
 function layout() {
   const f = panel.open, t = term.open;
@@ -752,17 +955,18 @@ function layout() {
   $("pterm").style.flex = f ? `0 0 ${termH}px` : "1";     // alone it fills the column; with files it tiles beneath
   $("vsplit").style.display = f && t ? "" : "none";
   $("ptoggle").classList.toggle("on", f); $("ttoggle").classList.toggle("on", t);
+  $("pterm").querySelector(".thead span").textContent = "Terminal" + (connOf(chat.conn) ? " · " + connOf(chat.conn).name : "");
   fitTerm(); reportDrag();
 }
 function startTerm() {
   if (!window.Terminal) return;
-  const wd = chat.workdir || "";
-  if (term.t && term.workdir !== wd) disposeTerm();
+  const wd = chat.workdir || "", cn = chat.conn || "";
+  if (term.t && (term.workdir !== wd || term.conn !== cn)) disposeTerm();
   if (!term.t) {
     term.t = new Terminal({fontSize: 13, cursorBlink: true, fontFamily: "ui-monospace, Menlo, Consolas, monospace",
       theme: {background: getComputedStyle(document.documentElement).getPropertyValue("--code").trim() || "#0d0d0e", foreground: "#e6edf3"}});
     term.fit = new FitAddon.FitAddon(); term.t.loadAddon(term.fit);
-    term.t.open($("tbody")); term.workdir = wd;
+    term.t.open($("tbody")); term.workdir = wd; term.conn = cn;
     term.t.onData(d => {
       if (term.exited) return connectTerm();                // any key after the shell ended starts a new one
       if (term.ws && term.ws.readyState === 1) term.ws.send(new TextEncoder().encode(d));
@@ -774,7 +978,7 @@ function startTerm() {
 }
 function connectTerm() {
   term.exited = false; term.t.reset(); fitTerm();
-  const ws = term.ws = new WebSocket(`ws://${location.host}/app/term?workdir=${enc(term.workdir)}&cols=${term.t.cols}&rows=${term.t.rows}`);
+  const ws = term.ws = new WebSocket(`ws://${location.host}/app/term?workdir=${enc(term.workdir)}&conn=${enc(term.conn)}&cols=${term.t.cols}&rows=${term.t.rows}`);
   ws.binaryType = "arraybuffer";
   ws.onmessage = e => term.t && term.t.write(new Uint8Array(e.data));
   ws.onclose = () => { if (term.ws === ws && term.t) { term.exited = true; term.t.write("\r\n\x1b[2m[Sitzung beendet – beliebige Taste für neue Shell]\x1b[0m"); } };
@@ -788,7 +992,7 @@ function disposeTerm() {
   if (term.t) { term.t.dispose(); term.t = null; }
 }
 function syncTerm() {   // the shell lives in the chat's folder: another folder means a fresh shell
-  if (term.t && term.workdir !== (chat.workdir || "")) { disposeTerm(); if (term.open) startTerm(); }
+  if (term.t && (term.workdir !== (chat.workdir || "") || term.conn !== (chat.conn || ""))) { disposeTerm(); if (term.open) startTerm(); }
 }
 $("ttoggle").onclick = () => { term.open = !term.open; layout(); if (term.open) startTerm(); };
 $("tclose").onclick = () => { term.open = false; layout(); };
@@ -843,7 +1047,7 @@ function msgHtml(m) {
   }).join("");
   if (!m.done) inner += statusHtml(m);
   const err = m.error ? `<div class="err">${esc(m.error)}</div>` : "";
-  return `<div class="msg"><div class="who">${esc(m.model || "")}</div>${inner}${err}</div>`;
+  return `<div class="msg"><div class="who">${esc(m.modelName || modelName(m.model) || "")}</div>${inner}${err}</div>`;
 }
 function render() {
   curIdx = fileIndex();
@@ -852,12 +1056,16 @@ function render() {
   const log = $("log"), stick = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
   const msgs = branch();
   log.innerHTML = msgs.length ? msgs.map(msgHtml).join("")
-    : `<div class="hello"><i>✳</i>Was steht an${userFirst ? ", " + esc(userFirst) : ""}?</div>${chat.workdir ? "" : '<div class="hint">Wähle unten einen Ordner, damit ich Dateien lesen und ändern kann – oder chatte einfach los.</div>'}`;
+    : `<div class="hello"><i>✳</i>Was steht an${userFirst ? ", " + esc(userFirst) : ""}?</div>${chat.workdir ? "" : `<div class="hint">Wähle unten einen Ordner${connOf(chat.conn) ? " auf " + esc(connOf(chat.conn).name) : ""}, damit ich Dateien lesen und ändern kann – oder chatte einfach los.</div>`}`;
   if (stick) log.scrollTop = log.scrollHeight;
   const busy = !!streaming;
   $("send").innerHTML = busy ? STOP : ARROW;
   $("send").title = busy ? "Stopp" : "Senden";
   $("send").classList.toggle("stop", busy);
+  const cn = connOf(chat.conn);
+  $("mode").innerHTML = (cn ? SERVER : LAPTOP) + `<span>${esc(cn ? cn.name : "Lokal")}</span>`;
+  $("mode").title = cn ? cn.host : "Umgebung wählen";
+  $("mode").classList.toggle("on", !!cn);
   $("folder").querySelector("span").textContent = chat.workdir ? chat.workdir.split("/").filter(Boolean).pop() || "/" : "Kein Ordner";
   $("folder").title = chat.workdir || "Arbeitsordner wählen";
   $("folder").classList.toggle("on", !!chat.workdir);
@@ -875,7 +1083,74 @@ $("log").addEventListener("click", e => {
   const b = e.target.closest("[data-act]");
   if (b && pending[b.dataset.id]) pending[b.dataset.id](b.dataset.act);
 });
-$("mode").onclick = e => { e.stopPropagation(); $("folderMenu").classList.remove("on"); $("modeMenu").classList.toggle("on"); };
+function showModeMenu() {
+  const row = (attr, label, extra, on, del) => `<div class="item" ${attr}><span>${label}${extra ? `<small>${esc(extra)}</small>` : ""}</span>${on ? '<span class="ck">✓</span>' : ""}${del ? `<button class="x" data-del="${esc(del)}" title="Verbindung entfernen">✕</button>` : ""}</div>`;
+  const list = connections.map(c => row(`data-conn="${esc(c.id)}"`, esc(c.name), c.host, chat.conn === c.id, c.id)).join("");
+  $("modeMenu").innerHTML = row('data-conn=""', "Lokal", "", !chat.conn)
+    + `<div class="item has-fly" data-ssh="1"><span>SSH</span><span>›</span><div class="fly">${list}${list ? "<hr>" : ""}${row('data-add="1"', "SSH-Verbindung hinzufügen…", "", false)}</div></div>`;
+  $("modeMenu").classList.add("on");
+}
+$("mode").onclick = e => {
+  e.stopPropagation(); $("folderMenu").classList.remove("on");
+  if ($("modeMenu").classList.contains("on")) $("modeMenu").classList.remove("on"); else showModeMenu();
+};
+$("modeMenu").onclick = async e => {
+  const del = e.target.closest("[data-del]");
+  if (del) {
+    e.stopPropagation();
+    const c = connOf(del.dataset.del);
+    if (!c || !confirm(`Verbindung „${c.name}“ entfernen?`)) return;
+    try { await api("/app/ssh/" + c.id, {method: "DELETE"}); } catch { return; }
+    connections = connections.filter(x => x.id !== c.id);
+    if (chat.conn === c.id) setConn(null); else render();
+    showModeMenu(); return;
+  }
+  const it = e.target.closest(".item"); if (!it) return;
+  if (it.dataset.ssh) { it.classList.toggle("open"); return; }              // click also opens the flyout (touch / keyboard)
+  $("modeMenu").classList.remove("on");
+  if (it.dataset.add) openSshModal();
+  else if (it.dataset.conn !== undefined) setConn(it.dataset.conn || null);
+};
+function setConn(id) {
+  if (streaming || (chat.conn || null) === (id || null)) return;
+  const cn = connOf(id);
+  chat.conn = cn ? cn.id : null;
+  chat.workdir = (cn ? localStorage["workdir:" + cn.id] || cn.folder : localStorage.workdir) || null;   // last folder used in that environment
+  resetPanel(); render();
+  if (chat.id) save().catch(() => {});
+}
+
+// ---- add SSH connection -------------------------------------------------------------------------
+const sshFields = () => ({name: $("sName").value.trim() || $("sHost").value.trim(), host: $("sHost").value.trim(), port: $("sPort").value.trim(),
+  key: $("sKey").value.trim(), folder: $("sFolder").value.trim(), accept_new: $("sAccept").checked});
+function sshResult(kind, text) { const r = $("sResult"); r.className = "sres" + (kind ? " " + kind : ""); r.textContent = text; }
+function openSshModal() {
+  for (const id of ["sName", "sHost", "sPort", "sKey", "sFolder"]) $(id).value = "";
+  $("sAccept").checked = false; sshResult("", ""); $("sshModal").classList.add("on"); $("sName").focus();
+}
+$("sCancel").onclick = () => $("sshModal").classList.remove("on");
+$("sTest").onclick = async () => {
+  sshResult("busy", "Verbinde…"); $("sTest").disabled = true;
+  try {
+    const r = await api("/app/ssh/test", json("POST", sshFields()));
+    if (!r.ok) sshResult("err", r.error);
+    else sshResult("ok", `Verbunden: ${r.info}\nHome-Verzeichnis: ${r.home}` + (r.warnings.length
+      ? `\n\nAuf dem Server fehlt: ${r.warnings.join(", ")}. Dann sind einzelne Werkzeuge eingeschränkt.` : ""));
+  } catch (e) { sshResult("err", String(e.message)); }
+  $("sTest").disabled = false;
+};
+$("sAdd").onclick = async () => {
+  $("sAdd").disabled = true;
+  try {
+    const c = await api("/app/ssh", json("POST", sshFields()));
+    connections.push(c); $("sshModal").classList.remove("on"); setConn(c.id);
+  } catch (e) {          // the server answers {"error": {"message": ...}}
+    let msg = String(e.message); try { msg = JSON.parse(msg.replace(/^\d+\s*/, "")).error.message; } catch {}
+    sshResult("err", msg);
+  }
+  $("sAdd").disabled = false;
+};
+$("sshModal").addEventListener("keydown", e => { if (e.key === "Enter" && e.target.tagName === "INPUT" && e.target.type !== "checkbox") { e.preventDefault(); $("sAdd").click(); } });
 document.addEventListener("click", () => { $("modeMenu").classList.remove("on"); $("folderMenu").classList.remove("on"); });
 $("perm").onchange = () => { chat.perm = $("perm").value; };
 
@@ -905,7 +1180,7 @@ document.addEventListener("click", e => {
 // ---- folder picker -----------------------------------------------------
 let pCur = "";
 async function pickerLoad(path) {
-  const d = await api("/app/fs?path=" + encodeURIComponent(path || ""));
+  const d = await api("/app/fs?path=" + encodeURIComponent(path || "") + cq());
   pCur = d.path; $("pPath").value = d.path;
   const base = d.path.replace(/\/$/, "");
   $("pList").innerHTML = (d.parent ? `<div class="pi" data-p="${esc(d.parent)}">⬑ ..</div>` : "")
@@ -913,24 +1188,27 @@ async function pickerLoad(path) {
 }
 async function setWorkdir(dir) {
   chat.workdir = dir; addRecent(dir);
-  if (dir) localStorage.workdir = dir; else localStorage.removeItem("workdir");
+  const key = chat.conn ? "workdir:" + chat.conn : "workdir";              // remembered per environment
+  if (dir) localStorage[key] = dir; else localStorage.removeItem(key);
   $("picker").classList.remove("on"); resetPanel(); render();
   if (chat.id) { try { await save(); } catch {} }
 }
 async function openPicker() {
   $("picker").classList.add("on");
-  try { await pickerLoad(chat.workdir || localStorage.workdir || ""); } catch (e) { $("pList").textContent = String(e.message); }
+  $("picker").querySelector("h3").textContent = "Arbeitsordner wählen" + (connOf(chat.conn) ? " · " + connOf(chat.conn).name : "");
+  try { await pickerLoad(chat.workdir || (chat.conn ? "" : localStorage.workdir) || ""); } catch (e) { $("pList").textContent = String(e.message); }
 }
-const recents = () => { try { return JSON.parse(localStorage.recentFolders || "[]"); } catch { return []; } };
+const rKey = () => chat && chat.conn ? "recentFolders:" + chat.conn : "recentFolders";
+const recents = () => { try { return JSON.parse(localStorage[rKey()] || "[]"); } catch { return []; } };
 function addRecent(path) {
   if (!path) return;
-  try { localStorage.recentFolders = JSON.stringify([path, ...recents().filter(x => x !== path)].slice(0, 8)); } catch {}
+  try { localStorage[rKey()] = JSON.stringify([path, ...recents().filter(x => x !== path)].slice(0, 8)); } catch {}
 }
 async function showFolderMenu() {
   const all = recents();
-  const alive = await Promise.all(all.map(p => fetch("/app/fs?path=" + enc(p)).then(r => r.ok).catch(() => false)));
+  const alive = await Promise.all(all.map(p => fetch("/app/fs?path=" + enc(p) + cq()).then(r => r.ok).catch(() => false)));
   const list = all.filter((_, i) => alive[i]);                 // folders deleted since are dropped quietly
-  if (list.length !== all.length) { try { localStorage.recentFolders = JSON.stringify(list); } catch {} }
+  if (list.length !== all.length) { try { localStorage[rKey()] = JSON.stringify(list); } catch {} }
   const names = list.map(p => p.split("/").filter(Boolean).pop() || "/");
   const row = (attr, label, extra, on) => `<div class="item" ${attr}><span>${label}${extra ? `<small>${esc(extra)}</small>` : ""}</span>${on ? '<span class="ck">✓</span>' : ""}</div>`;
   $("folderMenu").innerHTML = row('data-none="1"', "Kein Ordner", "", !chat.workdir)
@@ -963,17 +1241,26 @@ $("pCancel").onclick = () => $("picker").classList.remove("on");
 function toOpenWebUI() {
   const msgs = chat.history.messages;
   const flat = Object.values(msgs).sort((a, b) => a.timestamp - b.timestamp);
-  return {id: chat.id || "", title: chat.title, models: [chat.model], params: {},
-          history: chat.history, workdir: chat.workdir, messages: flat, tags: [], files: [], timestamp: Date.now()};
+  return {id: chat.id || "", title: chat.title, models: [modelName(chat.model)], params: {},
+          history: chat.history, workdir: chat.workdir, conn: chat.conn, messages: flat, tags: [], files: [], timestamp: Date.now()};
 }
 async function save() {
+  const pid = modelProvider(chat.model);
+  if (!modelIsOW(chat.model)) {
+    const r = await api("/app/chats", json("POST", {id: chat.id || "", title: chat.title, model: chat.model,
+      provider: pid, history: chat.history, workdir: chat.workdir, conn: chat.conn}));
+    chat.id = r.id; chat.updated_at = r.updated_at; chat.source = "local"; chat.provider = pid;
+    return;
+  }
+  const q = owq(pid);
   if (!chat.id) {
-    const c = await api(OW + "v1/chats/new", json("POST", {chat: toOpenWebUI(), folder_id: null}));
+    const c = await api(OW + "v1/chats/new" + q, json("POST", {chat: toOpenWebUI(), folder_id: null}));
     chat.id = c.id; chat.updated_at = c.updated_at;
   } else {
-    const c = await api(OW + `v1/chats/${chat.id}`, json("POST", {chat: toOpenWebUI()}));
+    const c = await api(OW + `v1/chats/${chat.id}` + q, json("POST", {chat: toOpenWebUI()}));
     chat.updated_at = c.updated_at;
   }
+  chat.source = "openwebui"; chat.provider = pid;
 }
 
 const TOOLS = [
@@ -987,7 +1274,8 @@ const TOOLS = [
 ].map(([name, description, props, required]) => ({type: "function", function: {name, description, parameters: {type: "object",
   properties: Object.fromEntries(Object.entries(props).map(([k, t]) => [k, {type: t}])), required}}}));
 
-const sysPrompt = () => `You are a coding agent working in the user's project folder: ${chat.workdir}
+const sysPrompt = () => `You are a coding agent working in the user's project folder: ${chat.workdir}${connOf(chat.conn) ? `
+This folder is on the remote host "${connOf(chat.conn).name}" (${connOf(chat.conn).host}), reached over SSH. All tools run on that host, not on the user's own computer.` : ""}
 Use the tools to explore the project, read and edit files, and run commands. Paths are relative to that folder.
 Read a file before editing it; prefer edit_file for small changes. Verify your work (run tests or the program) when possible.
 Be concise. When finished, summarize what you changed. Answer in the user's language.`;
@@ -997,11 +1285,12 @@ function payload(upto) {
   for (const m of branch()) {
     if (m.role === "user") out.push({role: "user", content: m.content});
     else if (m.steps) for (const s of m.id === upto ? m.steps.slice(0, -1) : m.steps) {  // current message: finished steps only
-      if (s.calls && s.calls.length) {
-        out.push({role: "assistant", content: s.content || null,
-          tool_calls: s.calls.map(c => ({id: c.id, type: "function", function: {name: c.name, arguments: c.args || "{}"}}))});
-        for (const c of s.calls) out.push({role: "tool", tool_call_id: c.id, content: c.result ?? "Cancelled."});
-      } else if (s.content) out.push({role: "assistant", content: s.content});
+      if (s.calls && s.calls.length) s.calls.forEach((c, i) => {   // one call per message: Llama 3.1 on vLLM rejects parallel calls in the history
+        out.push({role: "assistant", content: i ? null : s.content || null,
+          tool_calls: [{id: c.id, type: "function", function: {name: c.name, arguments: c.args || "{}"}}]});
+        out.push({role: "tool", tool_call_id: c.id, content: c.result ?? "Cancelled."});
+      });
+      else if (s.content) out.push({role: "assistant", content: s.content});
     } else if (m.content) out.push({role: "assistant", content: m.content});
   }
   return out;
@@ -1021,7 +1310,9 @@ async function streamStep(msgs, step, ctrl) {
     while ((i = buf.indexOf("\n")) >= 0) {
       const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
       if (!line.startsWith("data:") || line.includes("[DONE]")) continue;
-      let d; try { d = JSON.parse(line.slice(5)).choices?.[0]?.delta; } catch { continue; }
+      let o; try { o = JSON.parse(line.slice(5)); } catch { continue; }
+      if (o.error) throw new Error(o.error.message || "Fehler beim Anbieter");   // reported after the stream had started
+      const d = o.choices?.[0]?.delta;
       if (!d) continue;
       if (d.content) step.content += d.content;
       if (d.reasoning_content) step.reasoning += d.reasoning_content;
@@ -1036,6 +1327,8 @@ async function streamStep(msgs, step, ctrl) {
   }
   step.calls = step.calls.filter(c => c && c.name);
   for (const c of step.calls) { c.id = c.id || "call_" + uuid().slice(0, 8); if (!step.reasoning) delete step.reasoning; }
+  applog("step", {model: chat.model, content: step.content, reasoning: (step.reasoning || "").length,
+    calls: step.calls.map(c => ({name: c.name, args: c.args}))});
 }
 
 async function runCall(c, ctrl) {
@@ -1050,7 +1343,7 @@ async function runCall(c, ctrl) {
     if (choice === "always") { chat.perm = "auto"; }
   }
   c.status = "running"; render();
-  const r = await (await fetch("/app/tool", {...json("POST", {workdir: chat.workdir, name: c.name, args}), signal: ctrl.signal})).json();
+  const r = await (await fetch("/app/tool", {...json("POST", {workdir: chat.workdir, name: c.name, args, conn: chat.conn}), signal: ctrl.signal})).json();
   c.result = r.output; c.status = r.is_error ? "error" : "done"; c.meta = r.meta || undefined;
   if (!r.is_error && (c.name === "write_file" || c.name === "edit_file")) refreshTab(norm(args.path || ""));
 }
@@ -1077,9 +1370,13 @@ async function send(text) {
       if (turn === 39) a.error = "Abbruch: Limit von 40 Schritten erreicht.";
     }
   } catch (e) { if (e.name !== "AbortError") a.error = String(e.message || e); }
+  const last = a.steps[a.steps.length - 1];
+  if (last && !last.content.trim() && !last.calls.length && !a.error && !ctrl.signal.aborted)
+    a.error = "Das Modell hat ohne Antwort aufgehört. Schick die Aufgabe noch einmal oder wähle ein anderes Modell.";
   for (const s of a.steps) for (const c of s.calls)
     if (c.result === undefined) { c.status = "denied"; c.result = "Cancelled."; }
   a.content = a.steps.map(s => s.content).filter(Boolean).join("\n\n");
+  applog("answer", {model: chat.model, steps: a.steps.length, tools: !!chat.workdir, aborted: ctrl.signal.aborted, error: a.error || null});
   a.done = true; streaming = null; render();
   if (a.content || a.steps.some(s => s.calls.length) || !a.error) { try { await save(); } catch (e) { a.error = "Sync fehlgeschlagen: " + e.message; render(); } }
   loadList();
@@ -1092,7 +1389,9 @@ $("form").onsubmit = e => {
   $("input").value = ""; $("input").style.height = "auto";
   send(text);
 };
-$("input").onkeydown = e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("form").requestSubmit(); } };
+$("input").onkeydown = e => {   // Enter sends; while an answer runs only the stop button ends it
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (!streaming) $("form").requestSubmit(); }
+};
 $("input").oninput = () => { const t = $("input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 200) + "px"; };
 $("new").onclick = newChat;
 
@@ -1101,8 +1400,8 @@ async function sync() {
   if (streaming || document.hidden || $("login").classList.contains("on")) return;
   try {
     await loadList();
-    const c = chat && chat.id && list.find(x => x.id === chat.id);
-    if (c && c.updated_at > chat.updated_at) await openChat(chat.id);
+    const c = chat && chat.id && list.find(x => x.id === chat.id && (x.source || "") === (chat.source || ""));
+    if (c && c.updated_at > chat.updated_at) await openChat(chat.id, chat.provider, chat.source);
   } catch {}
 }
 setInterval(sync, 20000);
@@ -1110,16 +1409,22 @@ document.addEventListener("visibilitychange", sync);
 
 async function boot() {
   const st = await (await fetch("/app/status")).json();
-  if (!st.logged_in) return showLogin();
+  debugLog = !!st.debug;
+  const logged = (st.providers || []).filter(p => p.logged_in);
+  if (!logged.length) return showLogin();
   $("login").classList.remove("on");
-  $("who").textContent = (st.user?.name || st.user?.email || "").split(" ")[0];
-  userFirst = (st.user?.name || "").split(" ")[0];
-  $("av").textContent = (userFirst || st.user?.email || "?")[0].toUpperCase();
-  $("uemail").textContent = st.user?.email || "";
-  await loadModels(); newChat();
+  const label = st.user?.name || st.user?.email || logged[0]?.name || "";
+  $("who").textContent = label.split(" ")[0];
+  userFirst = label.split(" ")[0];
+  $("av").textContent = (userFirst || "?").charAt(0).toUpperCase();
+  $("uemail").textContent = st.user?.email || logged.map(p => p.name).join(", ");
+  try { connections = (await api("/app/ssh")).connections; } catch {}
+  await loadModels();
+  if (!Object.keys(MODEL_META).length) return showLogin("Kein Modell verfügbar. Bitte einen Anbieter anmelden.");
+  newChat();
 }
-addRecent(localStorage.workdir);   // folders used before this feature existed
-reportDrag();
+if (localStorage.workdir) { try { const k = "recentFolders"; const r = JSON.parse(localStorage[k] || "[]"); if (!r.includes(localStorage.workdir)) localStorage[k] = JSON.stringify([localStorage.workdir, ...r].slice(0, 8)); } catch {} }   // folders used before this feature existed
+applySidebar();
 applyAppearance();   // styles exist now: report the real background to the native window
 boot();
 </script>

@@ -42,14 +42,31 @@ def _read_text(f: Path) -> str:
     return data.decode("utf-8", errors="replace")
 
 
-def read_file(root, path, offset=1, limit=2000):
-    lines = _read_text(_path(root, path)).splitlines()
+def format_read(text: str, offset=1, limit=2000) -> str:
+    """Line-numbered slice of a text, as the model sees it (shared with the SSH backend)."""
+    lines = text.splitlines()
     offset = max(int(offset), 1)
     chunk = lines[offset - 1: offset - 1 + int(limit)]
     out = "\n".join(f"{i:>6}\t{l}" for i, l in enumerate(chunk, offset))
     if offset - 1 + len(chunk) < len(lines):
         out += f"\n... [{len(lines)} lines total, use offset to read more]"
     return out or "(empty file)"
+
+
+def apply_edit(text: str, old_string: str, new_string: str, replace_all=False) -> tuple[str, int]:
+    """Exact-match replacement with the uniqueness rule (shared with the SSH backend)."""
+    n = text.count(old_string)
+    if not old_string:
+        raise ToolError("old_string must not be empty (use write_file to create files)")
+    if n == 0:
+        raise ToolError("old_string not found in file (it must match exactly, including whitespace)")
+    if n > 1 and not replace_all:
+        raise ToolError(f"old_string occurs {n} times; add more context to make it unique or set replace_all")
+    return text.replace(old_string, new_string), n
+
+
+def read_file(root, path, offset=1, limit=2000):
+    return format_read(_read_text(_path(root, path)), offset, limit)
 
 
 def write_file(root, path, content):
@@ -63,15 +80,8 @@ def write_file(root, path, content):
 
 def edit_file(root, path, old_string, new_string, replace_all=False):
     f = _path(root, path)
-    text = _read_text(f)
-    n = text.count(old_string)
-    if not old_string:
-        raise ToolError("old_string must not be empty (use write_file to create files)")
-    if n == 0:
-        raise ToolError("old_string not found in file (it must match exactly, including whitespace)")
-    if n > 1 and not replace_all:
-        raise ToolError(f"old_string occurs {n} times; add more context to make it unique or set replace_all")
-    f.write_text(text.replace(old_string, new_string), encoding="utf-8")
+    new_text, n = apply_edit(_read_text(f), old_string, new_string, replace_all)
+    f.write_text(new_text, encoding="utf-8")
     meta = {"created": False, "added": len(new_string.splitlines()) * n, "removed": len(old_string.splitlines()) * n}
     return f"Edited {path} ({n} replacement{'s' if n > 1 else ''})", meta
 
@@ -164,8 +174,11 @@ def ls(workdir: str, path: str = ".") -> list[dict]:
     return [{"name": e.name, "dir": e.is_dir()} for e in entries[:1000]]
 
 
-async def run(workdir: str, name: str, args: dict) -> tuple[str, dict | None]:
-    """Returns (output text for the model, optional metadata for the UI)."""
+async def run(workdir: str, name: str, args: dict, conn: dict | None = None) -> tuple[str, dict | None]:
+    """Returns (output text for the model, optional metadata for the UI). `conn` = SSH connection: run there."""
+    if conn:
+        from . import remote
+        return await remote.run_tool(conn, workdir, name, args)
     root = _root(workdir)
     try:
         if name == "bash":

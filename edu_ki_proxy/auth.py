@@ -1,9 +1,9 @@
-"""Shibboleth login via a real browser, and session capture for Open WebUI.
+"""Browser session capture for providers.
 
-The front door (edu-ki-rlp.de) authenticates via the university IdP and then
-Open WebUI trusts it (auth_trusted_header). We never see credentials: the user
-logs in inside Chromium, we only read the resulting cookies and the Open WebUI
-JWT from localStorage.
+The user logs in inside a real browser.  We never see credentials: we only read
+the resulting cookies and the token the web app keeps in localStorage.  This
+works for Open WebUI/Shibboleth and for chat.deepseek.com (email/phone, Google
+or Apple login).  Storing the captured session is up to the caller.
 """
 import json
 import os
@@ -11,11 +11,9 @@ import time
 from pathlib import Path
 from urllib.parse import urlparse
 
-from playwright.sync_api import sync_playwright
-
 BASE = os.environ.get("EDU_KI_BASE", "https://chat-test.edu-ki-rlp.de").rstrip("/")
 STATE_DIR = Path(os.environ.get("EDU_KI_HOME", Path.home() / ".config" / "edu-ki-proxy"))
-STATE_FILE = STATE_DIR / "state.json"
+STATE_FILE = STATE_DIR / "state.json"      # pre-provider session file, only read to seed providers.json
 PROFILE_DIR = STATE_DIR / "browser-profile"
 
 
@@ -37,73 +35,103 @@ def load_state() -> dict | None:
         return None
 
 
-def save_state(state: dict) -> None:
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = STATE_FILE.with_suffix(".tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
-        json.dump(state, f)
-    tmp.replace(STATE_FILE)
-
-
 def clear_state() -> None:
-    """Forget the session, including the browser profile (so the next login is clean)."""
-    import shutil
     STATE_FILE.unlink(missing_ok=True)
-    shutil.rmtree(PROFILE_DIR, ignore_errors=True)
 
 
 def cookie_header(state: dict) -> str:
-    return "; ".join(f"{c['name']}={c['value']}" for c in state["cookies"])
+    return "; ".join(f"{c['name']}={c['value']}" for c in state.get("cookies", []))
 
 
-def _capture(ctx, page) -> dict | None:
-    """Return {token, cookies} once Open WebUI is loaded and logged in."""
-    host = urlparse(BASE).hostname
-    if urlparse(page.url).hostname != host:
-        return None
-    try:
-        token = page.evaluate("localStorage.getItem('token')")
-    except Exception:  # page mid-navigation
-        return None
-    if not token:
-        return None
-    cookies = [c for c in ctx.cookies(BASE) if c["domain"].lstrip(".") in host or host.endswith(c["domain"].lstrip("."))]
-    return {"token": token, "cookies": cookies, "captured_at": int(time.time())}
+# ---- provider-aware browser login -------------------------------------------------------------
+def profile_dir(provider: dict) -> Path:
+    pid = provider.get("id") or "default"
+    p = STATE_DIR / f"browser-profile-{pid}"
+    if pid == "eduki" and not p.exists() and PROFILE_DIR.exists():
+        return PROFILE_DIR                       # keep the old profile for existing installations
+    return p
 
 
-def _run(headless: bool, timeout_s: int) -> dict | None:
-    PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+def clear_profile(provider: dict) -> None:
+    import shutil
+    shutil.rmtree(profile_dir(provider), ignore_errors=True)
+
+
+def _capture(ctx, provider: dict, backend) -> dict | None:
+    """Return {token, cookies, user_agent} once a tab shows the provider's app logged in.
+
+    All tabs are checked: Google and Apple sign-in run in popups and may finish in any of them.
+    """
+    base = provider["base_url"]
+    host = urlparse(base).hostname
+    for page in list(ctx.pages):
+        if urlparse(page.url).hostname != host:
+            continue
+        try:
+            token = page.evaluate(backend.token_js())
+            user_agent = page.evaluate("navigator.userAgent")
+        except Exception:  # page mid-navigation or closed
+            continue
+        if not token:
+            continue
+        cookies = [c for c in ctx.cookies(base)
+                   if (d := c["domain"].lstrip(".")) and (host == d or host.endswith("." + d))]
+        # headless runs say so in the UA; requests made with it would stand out
+        user_agent = (user_agent or "").replace("HeadlessChrome", "Chrome") or None
+        return {"token": token, "cookies": cookies, "user_agent": user_agent, "captured_at": int(time.time())}
+    return None
+
+
+def _run(provider: dict, backend, headless: bool, timeout_s: int) -> dict | None:
+    from playwright.sync_api import Error as PlaywrightError, sync_playwright
+
+    d = profile_dir(provider)
+    d.mkdir(parents=True, exist_ok=True)
+    rejected: set[str] = set()
     with sync_playwright() as p:
-        ctx = p.chromium.launch_persistent_context(str(PROFILE_DIR), headless=headless, executable_path=system_browser())
+        # Without the automation switches the window is an ordinary browser to the sites; Google's
+        # sign-in in particular refuses browsers that announce they are remote controlled.
+        ctx = p.chromium.launch_persistent_context(
+            str(d), headless=headless, executable_path=system_browser(), no_viewport=not headless,
+            ignore_default_args=["--enable-automation"], args=["--disable-blink-features=AutomationControlled"])
         try:
             page = ctx.pages[0] if ctx.pages else ctx.new_page()
-            page.goto(BASE)
+            page.goto(provider["base_url"])
             deadline = time.time() + timeout_s
             while time.time() < deadline:
-                state = _capture(ctx, page)
-                if state:
-                    save_state(state)
-                    return state
-                page.wait_for_timeout(500)
+                state = _capture(ctx, provider, backend)
+                if state and state["token"] not in rejected:
+                    if backend.check_session(provider, state):
+                        return state
+                    rejected.add(state["token"])      # stale token left in the profile: wait for a fresh login
+                if not ctx.pages:
+                    raise LoginRequired("Browserfenster wurde geschlossen")
+                ctx.pages[0].wait_for_timeout(500)
             return None
+        except PlaywrightError as e:
+            if not ctx.pages or "closed" in str(e).lower():
+                raise LoginRequired("Browserfenster wurde geschlossen") from e
+            raise
         finally:
-            ctx.close()
+            try:
+                ctx.close()
+            except PlaywrightError:
+                pass
 
 
-def interactive_login(timeout_s: int = 600) -> dict:
-    print("Browser opened: choose your Hochschule and log in. Waiting...")
-    state = _run(headless=False, timeout_s=timeout_s)
+def interactive_login(provider: dict, backend, timeout_s: int = 600) -> dict:
+    print(f"Browser geöffnet: bei {provider.get('name') or provider['base_url']} anmelden …")
+    state = _run(provider, backend, headless=False, timeout_s=timeout_s)
     if not state:
-        raise LoginRequired("login timed out")
+        raise LoginRequired("Zeitüberschreitung bei der Anmeldung")
     return state
 
 
-def silent_refresh() -> dict:
-    """Reuse the persistent browser profile without UI; works while the IdP/front-door session is alive."""
-    if not PROFILE_DIR.exists():   # logged in through the native window: there is no Chromium profile to reuse
-        raise LoginRequired("session expired, please log in again")
-    state = _run(headless=True, timeout_s=25)
+def silent_refresh(provider: dict, backend) -> dict:
+    """Reuse the persistent browser profile without UI; works while the site's session is alive."""
+    if not profile_dir(provider).exists():
+        raise LoginRequired("Sitzung abgelaufen, bitte erneut anmelden")
+    state = _run(provider, backend, headless=True, timeout_s=25)
     if not state:
-        raise LoginRequired("session expired, run: python -m edu_ki_proxy login")
+        raise LoginRequired("Sitzung abgelaufen, bitte erneut anmelden")
     return state

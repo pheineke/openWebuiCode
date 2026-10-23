@@ -1,15 +1,31 @@
 # EDU-KI Code
 
-Desktop-App für die KI-Chats der Hochschulen in Rheinland-Pfalz (Open WebUI hinter Shibboleth-Login).
-Chat mit Modellauswahl, synchron mit deinen Open-WebUI-Chats, dazu ein Agent, der in einem Projektordner
-Dateien lesen und ändern und Befehle ausführen kann (jeweils mit Rückfrage), mit Datei-Ansicht, HTML-Vorschau
-und Terminal. Zusätzlich ein lokaler OpenAI-kompatibler Proxy, den z. B. [opencode](https://opencode.ai) nutzen kann.
+Desktop-App für KI-Chats mit mehreren Anbietern: Open WebUI hinter Shibboleth-Login (voreingestellt:
+EDU-KI-RLP), **DeepSeek Web** (chat.deepseek.com) und beliebige **OpenAI-kompatible APIs** (OpenAI,
+OpenRouter, Ollama, LM Studio, andere Open-WebUI-Instanzen). Du meldest dich bei einem oder mehreren
+Anbietern an und wählst im Chat aus allen verfügbaren Modellen.
+
+Chat mit Modellauswahl, dazu ein Agent, der in einem Projektordner Dateien lesen und ändern und Befehle
+ausführen kann (jeweils mit Rückfrage), mit Datei-Ansicht, HTML-Vorschau und Terminal. Zusätzlich ein lokaler
+OpenAI-kompatibler Proxy, den z. B. [opencode](https://opencode.ai) nutzen kann.
 
 Inoffiziell: kein Angebot der Hochschulen. Die Nutzungsbedingungen des Dienstes gelten weiter.
+
+## So sieht es aus
+
+![Rückfrage: der Agent will index.html schreiben, mit Erlauben, Immer erlauben und Ablehnen](docs/screenshots/approval.png)
+
+Bevor der Agent eine Datei schreibt oder einen Befehl ausführt, zeigt er den Inhalt und fragt nach.
+
+![Ergebnis: Erstellt index.html mit +53 −0 und die Antwort des Modells](docs/screenshots/result.png)
+
+Nach der Freigabe steht die Änderung als Zeile im Chat (`+53 −0` = hinzugefügte/entfernte Zeilen). Ein Klick
+öffnet die Datei rechts im Datei-Bereich.
 
 ## Voraussetzungen
 
 - Linux mit Python 3 (getestet mit 3.14; ab 3.10 sollte es reichen)
+- `wasmtime` (wird mit den Requirements installiert) für den DeepSeek-Proof-of-Work
 - Für das App-Fenster: GTK 4, libadwaita, WebKitGTK 6 und PyGObject.
   Fedora 43 (diese Pakete sind dort installiert): `sudo dnf install python3-gobject gtk4 libadwaita webkitgtk6.0`
   Fehlen sie, öffnet die App stattdessen ein Chromium-Fenster (dafür `chromium`/`google-chrome` oder
@@ -30,19 +46,78 @@ python3 -m venv --system-site-packages .venv   # --system-site-packages, damit P
 .venv/bin/python -m edu_ki_proxy app
 ```
 
-Beim ersten Start siehst du den Anmeldebildschirm. **Mit Hochschul-Login anmelden** lädt die Anmeldung im
-App-Fenster: Hochschule wählen, einloggen, die App übernimmt die Sitzung und springt zurück. Dein Passwort
-bekommt nur deine Hochschule zu sehen. Klappt das nicht, hilft der Link darunter
-(„Stattdessen im Chromium-Fenster anmelden“).
+Beim ersten Start siehst du den Anmeldebildschirm mit allen eingerichteten Anbietern. **Anmelden** öffnet die
+Anmeldeseite des Anbieters; die App übernimmt danach die Sitzung, prüft sie beim Anbieter und springt zurück.
+Dein Passwort bekommt nur der Anbieter zu sehen.
 
-Läuft die Sitzung ab, erscheint der Anmeldebildschirm wieder. Abmelden: Profil unten links → Abmelden.
+- **Open WebUI** (Hochschul-Login) meldet sich im App-Fenster an. Der Knopf **Chromium** daneben nimmt
+  stattdessen ein Chromium-Fenster.
+- **DeepSeek** meldet sich immer in einem Chromium-Fenster an, weil Google und Apple ihre Anmeldung in
+  eingebetteten Fenstern ablehnen. E-Mail/Telefon, Google und Apple funktionieren dort.
+
+Läuft eine Sitzung ab, versucht die App zuerst eine stille Neuanmeldung mit dem gespeicherten Browserprofil.
+Klappt das nicht, steht der Anbieter als „Sitzung abgelaufen“ im Anmeldebildschirm. Abmelden: Profil unten
+links → Abmelden (alle) oder **Strg+,** → **Anbieter** → Abmelden (einer). Weitere Anbieter hinzufügen:
+**Strg+,** → **Anbieter**.
 
 ## Benutzen
 
 - **Ordner** (Chip über dem Eingabefeld): Arbeitsordner wählen. Dann darf das Modell dort lesen, ändern und
   Befehle ausführen. Schreiben und Befehle fragen nach, außer du stellst „Auto“ ein.
 - Oben rechts: **Terminal** und **Dateien** (Code mit Syntaxfarben, bei HTML per Auge-Symbol Vorschau).
-- **Strg+K** durchsucht Chats, **Strg+,** öffnet die Einstellungen (Darstellung, Nutzung).
+- **Strg+K** durchsucht Chats, **Strg+,** öffnet die Einstellungen (Darstellung, Anbieter, Nutzung).
+
+## Anbieter
+
+Unter **Einstellungen → Anbieter** kannst du weitere Dienste hinzufügen:
+
+- **Open WebUI:** Basis-URL der Instanz, Anmeldung im App-Fenster (Shibboleth oder normaler Login).
+- **DeepSeek (Web):** keine Basis-URL nötig; Anmeldung bei `chat.deepseek.com` im Chromium-Fenster.
+  Chatverläufe werden lokal gespeichert, Open-WebUI-Chats bleiben in Open WebUI. Die Seitenleiste zeigt beide
+  zusammen. DeepSeek hat keine offizielle Schnittstelle für das Web-Abo; die App spricht die internen Endpunkte
+  der Weboberfläche an. Das kann jederzeit brechen und verstößt womöglich gegen DeepSeeks Nutzungsbedingungen.
+- **OpenAI-kompatibel:** Basis-URL inkl. `/v1` und API-Schlüssel, z. B. OpenAI, OpenRouter, Gemini
+  (`https://generativelanguage.googleapis.com/v1beta/openai`) oder die DeepSeek-API. Für Ollama/LM Studio auf
+  `127.0.0.1` ist kein Schlüssel nötig. Modelle kannst du optional als Komma-Liste eintragen; sonst werden sie
+  über `GET /models` geladen. Ändert sich die Basis-URL, wird der gespeicherte Schlüssel verworfen.
+
+Im Chat stehen nur Modelle angemeldeter Anbieter zur Auswahl. Modelle heißen intern `<anbieter-id>/<modell>`,
+z. B. `eduki/qwen3.5-397b` oder `deepseek/deepseek-reasoner`. Alte Modellnamen ohne Präfix gehen weiter an den
+Standard-Anbieter.
+
+**Tools über den Prompt:** Manche Server reichen die Tools nicht an das Modell weiter. Bei EDU-KI betrifft das
+`claude-sonnet-5-rptu`: Claude antwortet dann mit Text wie „**Tool: execute_command**“, statt ein Tool
+aufzurufen. Trag solche Modell-IDs in der Anbieter-Karte unter **Tools über den Prompt** ein. Dann beschreibt
+der Proxy die Tools im Systemprompt und wandelt die ```` ```tool ````-Blöcke der Antwort in normale Tool-Aufrufe
+um (`backends/emulate.py`; DeepSeek arbeitet immer so, und falls DeepSeek doch sein eigenes DSML-Format
+schreibt, wird das ebenfalls erkannt).
+
+### Aufbau
+
+Jeder Anbieter-Typ ist eine Klasse in `edu_ki_proxy/backends/` (`openwebui.py`, `deepseek.py`,
+`openai_compat.py`) mit derselben Schnittstelle (`backends/base.py`): Login-Art, Sitzungsprüfung, Modelle,
+Chat im OpenAI-Format und optional ein eigener Chatverlauf. Server, App und CLI kennen nur diese
+Schnittstelle; ein neuer Anbieter ist eine neue Datei plus ein Eintrag in `backends/__init__.py`.
+`backends/emulate.py` bildet Tool-Aufrufe für Modelle nach, die keine Tools bekommen.
+`providers.py` speichert die eingerichteten Anbieter und Sitzungen, `usage.py` das Nutzungsprotokoll,
+`trace.py` das Debug-Log.
+
+## Auf einem anderen Rechner arbeiten (SSH)
+
+Chip **Lokal** → **SSH** → **SSH-Verbindung hinzufügen…**: Name, Host (`user@host` oder ein Alias aus `~/.ssh/config`),
+Port, Schlüssel und Startordner angeben und mit **Verbindung testen** prüfen. Danach den Ordner auf dem Server
+wählen. Agent-Werkzeuge, Datei-Bereich, HTML-Vorschau und Terminal laufen dann auf dem Server, nicht auf deinem Rechner.
+
+- **Anmeldung:** über dein `ssh` mit Schlüssel oder `ssh-agent`. Die Werkzeuge fragen nie nach einem Passwort;
+  nur das Terminal kann eines abfragen.
+- **Server:** Linux/Unix mit `sh`, `find`, `grep` und GNU-coreutils (`realpath -m`, `timeout`). Der Test meldet, was fehlt.
+- **Hostschlüssel:** werden nie abgeschaltet. Für einen neuen Server gibt es die Option „beim ersten Verbinden
+  akzeptieren“; ein später geänderter Schlüssel wird weiter abgelehnt.
+- Neue Chats starten immer **lokal**. Die Verbindung gehört zum Chat und wird mit ihm gespeichert.
+- Gespeichert werden nur Name, Host, Port und Schlüsselpfad (`~/.config/edu-ki-proxy/ssh.json`), keine Passwörter.
+  Eine eigene ssh-Konfiguration statt `~/.ssh/config`: `EDU_KI_SSH_CONFIG=/pfad`.
+- Wie lokal gilt: Dateiwerkzeuge bleiben im gewählten Ordner (auch über Symlinks, auf dem Server geprüft),
+  `bash` ist nicht abgeschottet, die Rückfrage ist der Schutz.
 
 ## Mit opencode
 
@@ -54,38 +129,60 @@ In einer `opencode.json` im Projektordner den Proxy als Anbieter eintragen (Mode
 {
   "$schema": "https://opencode.ai/config.json",
   "provider": {
-    "eduki": {
+    "proxy": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "EDU-KI-RLP",
+      "name": "Lokaler Proxy",
       "options": { "baseURL": "http://127.0.0.1:8787/v1", "apiKey": "unused" },
-      "models": { "qwen3.5-397b": { "name": "Qwen 3.5 397B" } }
+      "models": {
+        "eduki/qwen3.5-397b": { "name": "Qwen 3.5 397B" },
+        "deepseek/deepseek-reasoner": { "name": "DeepSeek R1" }
+      }
     }
   }
 }
 ```
 
 ```bash
-opencode -m eduki/qwen3.5-397b
+opencode -m proxy/eduki/qwen3.5-397b
+opencode -m proxy/deepseek/deepseek-reasoner
 ```
 
-Weitere Befehle: `login` (Anmeldung im Chromium-Fenster), `models` (verfügbare Modelle), `tooltest <modell>`
-(prüft, ob ein Modell Werkzeugaufrufe kann).
+Die Modell-ID im Proxy ist `<anbieter-id>/<modell>`; im opencode-Config ist der Schlüssel unter `models`
+genau diese ID, der Provider-Name davor (`proxy`) ist frei wählbar. `python -m edu_ki_proxy models` zeigt alle
+IDs. Weitere Befehle:
+`login [--provider ID]` (Anmeldung im Chromium-Fenster), `providers` (konfigurierte Anbieter),
+`tooltest <modell>` (prüft, ob ein Modell Werkzeugaufrufe kann).
 
 ## Wo liegen meine Daten?
 
-`~/.config/edu-ki-proxy/` (anderer Ort: Umgebungsvariable `EDU_KI_HOME`). Dort liegen die Sitzung
-(`state.json`, nur für dich lesbar), die Fenster-Daten mit Einstellungen und das Nutzungsprotokoll.
-Anmeldedaten löschen: in der App abmelden (entfernt auch das Hochschul-Cookie im Fenster; nur `state.json`
-zu löschen reicht nicht, die Hochschule könnte dich sonst ohne Passwort wieder anmelden).
+`~/.config/edu-ki-proxy/` (anderer Ort: Umgebungsvariable `EDU_KI_HOME`). Dort liegen die Anbieter und
+Sitzungen (`providers.json`, nur für dich lesbar), lokale Chats (`chats/`), die Browserprofile für den
+Chromium-Login (`browser-profile-<id>/`), die Fenster-Daten mit Einstellungen und das Nutzungsprotokoll.
+`state.json` stammt von älteren Versionen und wird nur beim ersten Start übernommen.
+Anmeldedaten löschen: in der App abmelden (entfernt auch die Cookies und gespeicherten Sitzungen der Anbieter
+im Fenster; nur Dateien zu löschen reicht nicht, die Hochschule könnte dich sonst ohne Passwort wieder anmelden).
 Andere Instanz: `EDU_KI_BASE=https://…`. Anderer Browser für den Chromium-Login: `EDU_KI_BROWSER=/pfad`.
 
 ## Fehlersuche
 
+- **Debug-Log**: `python3 -m edu_ki_proxy app --debug` (auch `serve --debug` oder `EDU_KI_DEBUG=1`) schreibt
+  nach `~/.config/edu-ki-proxy/debug.log` (rotiert bei 10 MB). Pro Chat-Anfrage, unter einer gemeinsamen ID:
+  was die App schickt, der Prompt und die Rohdaten von DeepSeek, der vollständige Modelltext, was bei der App
+  ankommt, die ausgeführten Tools und die Fehler der App. Das Log enthält Prompts und Dateiinhalte, aber keine
+  Sitzungsschlüssel, und ist darum nur auf Wunsch an.
 - **Port 8787 belegt** (App startet nicht): `fuser -k 8787/tcp`, dann neu starten.
 - **Fenster bleibt leer / 403**: Die App akzeptiert nur Anfragen von `127.0.0.1:<Port>`. Nicht über eine andere
   Adresse oder einen Proxy aufrufen.
 - **Modell antwortet nicht mit Werkzeugen**: nicht alle Modelle können das. `qwen3.5-397b` und
-  `deepseek-v4-flash` wurden getestet.
+  `deepseek-v4-flash` wurden getestet. DeepSeek-Web-Modelle bekommen Werkzeuge über den Prompt beigebracht.
+- **DeepSeek: „PoW-Modul konnte nicht geladen werden“**: die App lädt beim ersten Mal
+  `sha3_wasm_bg.7b9ca65ddd.wasm` von `fe-static.deepseek.com` und legt sie in `~/.config/edu-ki-proxy/` ab.
+  Ohne Internet diesen Schritt einmal mit Verbindung ausführen. Hat DeepSeek eine neue Version veröffentlicht
+  (Fehler 404 oder „unbekannte Schnittstelle“), die neue Adresse über `EDU_KI_DEEPSEEK_WASM=https://…` setzen.
+- **DeepSeek: „HTTP 403, Bot-Schutz“**: DeepSeeks CDN hat die Anfrage abgewiesen. Das ist keine abgelaufene
+  Sitzung; später erneut versuchen oder neu anmelden.
+- **Google-Anmeldung meldet „Browser nicht sicher“**: per E-Mail/Telefon anmelden, oder mit
+  `EDU_KI_BROWSER=/usr/bin/google-chrome` ein installiertes Chrome statt Chromium versuchen.
 
 ## Sicherheit in Kürze
 
