@@ -193,8 +193,32 @@ details.think div{white-space:pre-wrap;border-left:2px solid var(--line);padding
 .menu div{display:flex;justify-content:space-between;gap:16px;padding:7px 10px;border-radius:6px;font-size:13px}
 .menu div.item{cursor:pointer}.menu div.item:hover{background:var(--side)}
 .menu div.off{color:var(--muted);opacity:.7}
-form{display:flex;align-items:flex-end;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:8px 8px 8px 14px}
+form{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:8px}
 form:focus-within{border-color:var(--accent)}
+form textarea{min-width:0}
+.atts{display:flex;flex-wrap:wrap;gap:8px}
+.atts:empty{display:none}
+#form .atts{flex-basis:100%;padding:4px 2px 2px}
+.att{position:relative;display:inline-flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:4px 10px 4px 4px;font-size:12px;max-width:240px;min-width:0;cursor:default}
+.att[data-text]{cursor:pointer}
+.att img,.att .ic{width:34px;height:34px;border-radius:7px;flex:none}
+.att img{object-fit:cover}
+.att .ic{display:grid;place-items:center;background:var(--side);color:var(--muted);font-size:10px;font-weight:650;text-transform:uppercase;overflow:hidden}
+.att .nm{display:flex;flex-direction:column;min-width:0;line-height:1.45}
+.att .nm b{font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.att .nm small{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.att .rm{position:absolute;top:-7px;right:-7px;width:18px;height:18px;border-radius:50%;border:1px solid var(--line);background:var(--panel);color:var(--muted);font-size:9px;line-height:1;display:grid;place-items:center;padding:0;cursor:pointer}
+.att .rm:hover{color:var(--text)}
+.att.busy{opacity:.6}
+.att.err{border-color:var(--danger)}
+.att.err small{color:var(--danger)}
+.msg.user .atts{justify-content:flex-end;align-items:flex-start;max-width:85%;margin-bottom:6px}
+.msg .shot{max-width:min(320px,100%);max-height:240px;border-radius:12px;border:1px solid var(--line);cursor:zoom-in;display:block}
+#lightbox .lbox{display:flex;flex-direction:column;max-width:min(92vw,900px);max-height:90vh}
+#lightbox img{max-width:92vw;max-height:90vh;border-radius:10px;box-shadow:0 20px 60px #0008;cursor:zoom-out}
+#lightbox .lhead{background:var(--panel);border:1px solid var(--line);border-bottom:0;border-radius:12px 12px 0 0;padding:10px 14px;font-weight:600;font-size:14px}
+#lightbox pre{margin:0;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:0 0 12px 12px;padding:14px;overflow:auto;white-space:pre-wrap;font:13px/1.5 ui-monospace,Menlo,Consolas,monospace;min-width:min(560px,92vw)}
+body.dropping main::after{content:"Zum Anhängen hier ablegen";position:absolute;inset:10px;border:2px dashed var(--accent);border-radius:16px;display:grid;place-items:center;color:var(--accent);font-weight:600;font-size:15px;background:color-mix(in srgb,var(--bg) 88%,transparent);pointer-events:none;z-index:6}
 textarea{flex:1;resize:none;border:0;outline:0;background:transparent;font:inherit;color:var(--text);padding:5px 0;max-height:200px}
 .send{border:0;border-radius:8px;background:none;color:var(--muted);width:32px;height:32px;display:grid;place-items:center;flex:none}
 .send:hover{color:var(--accent)}
@@ -351,8 +375,11 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
       </div>
     </div>
     <form id="form">
+      <div class="atts" id="atts"></div>
+      <button class="send" id="attach" type="button" title="Datei oder Bild anhängen (auch per Ziehen oder Einfügen)"><svg viewBox="0 0 24 24"><path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg></button>
       <textarea id="input" rows="1" placeholder="Aufgabe beschreiben oder Frage stellen"></textarea>
       <button class="send" id="send" type="submit"></button>
+      <input type="file" id="fileIn" multiple hidden>
     </form>
     <div class="bar">
       <div class="menuwrap" id="permWrap" style="display:none">
@@ -382,6 +409,7 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
   <div class="scont" id="scont"></div>
   <button class="sx" id="sclose" title="Schließen">✕</button>
 </div></div>
+<div class="overlay" id="lightbox"><div class="lbox"></div></div>
 <div class="overlay" id="search"><div class="pcard scard">
   <input id="sq" placeholder="Chats durchsuchen…" autocomplete="off" spellcheck="false">
   <div id="sres"></div>
@@ -765,7 +793,7 @@ $("search").onclick = e => { if (e.target === $("search")) closeSearch(); };
 document.addEventListener("keydown", e => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("search").classList.contains("on") ? closeSearch() : openSearch(); }
   else if ((e.ctrlKey || e.metaKey) && e.key === ",") { e.preventDefault(); openSettings(); }
-  else if (e.key === "Escape") { closeSearch(); closeSettings(); $("sshModal").classList.remove("on"); document.querySelectorAll(".menu.on, .umenu.on").forEach(m => m.classList.remove("on")); $("userMenu").classList.remove("on"); $("picker").classList.remove("on"); }
+  else if (e.key === "Escape") { $("lightbox").classList.remove("on"); closeSearch(); closeSettings(); $("sshModal").classList.remove("on"); document.querySelectorAll(".menu.on, .umenu.on").forEach(m => m.classList.remove("on")); $("userMenu").classList.remove("on"); $("picker").classList.remove("on"); }
 });
 
 function newChat() {
@@ -1038,7 +1066,14 @@ function callHtml(c) {
   return `<details class="call ${c.status}" data-k="${esc(k)}"${open ? " open" : ""}><summary><span class="ttl">${esc(title)}</span><span class="st">${label}</span></summary>${detail ? `<pre><code>${esc(detail)}</code></pre>` : ""}${btns}</details>`;
 }
 function msgHtml(m) {
-  if (m.role === "user") return `<div class="msg user"><div class="who">Du</div><div class="body">${esc(m.content)}</div></div>`;
+  if (m.role === "user") {
+    const att = m.attachments || [];
+    const row = items => items.length ? `<div class="atts">${items.join("")}</div>` : "";
+    const imgs = row(att.filter(a => a.kind === "image").map(a =>
+      `<img class="shot" src="${esc(viewUrl(a))}" alt="${esc(a.name)}" title="${esc(a.name)}" data-att="${esc(a.id)}">`));
+    const docs = row(att.filter(a => a.kind !== "image").map(a => attHtml(a, false)));
+    return `<div class="msg user"><div class="who">Du</div>${imgs}${docs}${m.content ? `<div class="body">${esc(m.content)}</div>` : ""}</div>`;
+  }
   const steps = m.steps || [{content: m.content, reasoning: m.reasoning, calls: []}];
   let inner = steps.map((s, i) => {
     const k = `r${m.id}${i}`;
@@ -1237,6 +1272,136 @@ $("pOk").onclick = () => setWorkdir(pCur);
 $("pNone").onclick = () => setWorkdir(null);
 $("pCancel").onclick = () => $("picker").classList.remove("on");
 
+// ---- attachments -------------------------------------------------------
+// Images go to the model as image_url parts; text, code and documents (the server extracts PDF,
+// Word, PowerPoint and OpenDocument) go into the message text. Stored on the user message as
+// attachments: [{id, name, size, kind: "image", url, w, h} | {id, name, size, kind: "text", text, pages}].
+let atts = [];                   // waiting in the composer; while being read also {busy, ready}, on failure {error}
+const IMG_MAX = 1600;            // px, longest side sent to the model
+const TEXT_MAX = 1_000_000;      // characters per file
+const DOC_RE = /\.(pdf|docx|docm|pptx|pptm|odt|odp|xlsx|xls|ods|doc|ppt)$/i;   // the server reads these, or says why not
+const IMG_RE = /^image\/(png|jpeg|gif|webp|bmp|avif)$/;
+const fmtSize = n => n < 1024 ? n + " B" : n < 1048576 ? Math.round(n / 1024) + " KB" : (n / 1048576).toFixed(1) + " MB";
+const fmtTok = chars => { const t = Math.ceil(chars / 4); return "≈ " + (t < 1000 ? t : (t / 1000).toFixed(t < 10000 ? 1 : 0) + "k") + " Tokens"; };
+const dataUrl = blob => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(blob); });
+
+const viewUrls = new Map();      // attachment id -> blob: URL, so re-rendering the log does not re-parse megabytes of base64
+function viewUrl(a) {
+  if (!a.url || !a.url.startsWith("data:")) return a.url || "";
+  let u = viewUrls.get(a.id);
+  if (!u) {
+    const comma = a.url.indexOf(","), bin = atob(a.url.slice(comma + 1)), buf = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    u = URL.createObjectURL(new Blob([buf], {type: a.url.slice(5, comma).split(";")[0]}));
+    viewUrls.set(a.id, u);
+  }
+  return u;
+}
+
+async function readImage(f) {
+  let bmp;
+  try { bmp = await createImageBitmap(f); } catch { throw new Error("Bildformat wird nicht unterstützt"); }
+  const w0 = bmp.width, h0 = bmp.height, scale = Math.min(1, IMG_MAX / Math.max(w0, h0));
+  if (scale === 1 && /^image\/(png|jpeg)$/.test(f.type) && f.size <= 1.5e6) { bmp.close(); return {url: await dataUrl(f), w: w0, h: h0}; }
+  const c = document.createElement("canvas"), g = c.getContext("2d");
+  c.width = Math.max(1, Math.round(w0 * scale)); c.height = Math.max(1, Math.round(h0 * scale));
+  g.drawImage(bmp, 0, 0, c.width, c.height); bmp.close();
+  let url = c.toDataURL("image/png");                 // keeps screenshots sharp
+  if (url.length > 2e6) {                             // photos: JPEG, transparent areas white
+    g.globalCompositeOperation = "destination-over"; g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+    url = c.toDataURL("image/jpeg", 0.88);
+  }
+  return {url, w: c.width, h: c.height};
+}
+
+async function readAttachment(f) {
+  if (IMG_RE.test(f.type) || (!f.type && /\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(f.name))) return {kind: "image", ...await readImage(f)};
+  if (DOC_RE.test(f.name) || f.type === "application/pdf") {
+    const r = await fetch(`/app/extract?name=${enc(f.name)}`, {method: "POST", body: f});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error?.message || `Fehler ${r.status}`);
+    return {kind: "text", text: d.text, pages: d.pages};
+  }
+  if (f.size > TEXT_MAX * 4) throw new Error("Datei zu groß");
+  const buf = new Uint8Array(await f.arrayBuffer());
+  if (buf.subarray(0, 65536).includes(0)) throw new Error("Dateityp wird nicht unterstützt");   // binary
+  let text;
+  try { text = new TextDecoder("utf-8", {fatal: true}).decode(buf); } catch { text = new TextDecoder("windows-1252").decode(buf); }
+  if (text.length > TEXT_MAX) throw new Error("Datei zu groß");
+  return {kind: "text", text};
+}
+
+function addFiles(files) {
+  for (const f of files) {
+    const a = {id: uuid(), name: f.name || "Bild.png", size: f.size, mime: f.type || "", busy: true};
+    a.ready = readAttachment(f).then(r => { Object.assign(a, r); }, e => { a.error = String(e.message || e); })
+      .finally(() => { a.busy = false; renderAtts(); });
+    atts.push(a);
+  }
+  renderAtts();
+}
+
+function attHtml(a, removable) {
+  const ext = (a.name.match(/\.([a-z0-9]{1,5})$/i) || [, "txt"])[1];
+  const thumb = a.kind === "image" && a.url ? `<img src="${esc(viewUrl(a))}" alt="">` : `<span class="ic">${esc(ext)}</span>`;
+  const meta = a.busy ? "wird gelesen…" : a.error || (a.kind === "image" ? (a.w ? `${a.w} × ${a.h}` : fmtSize(a.size))
+    : [a.pages > 1 ? `${a.pages} ${/\.(pptx?|pptm|odp)$/i.test(a.name) ? "Folien" : "Seiten"}` : "", fmtTok(a.text.length)].filter(Boolean).join(" · "));
+  return `<div class="att${a.busy ? " busy" : ""}${a.error ? " err" : ""}" data-att="${esc(a.id)}"${a.text ? " data-text" : ""} title="${esc(a.error ? a.name + ": " + a.error : a.name)}">`
+    + `${thumb}<span class="nm"><b>${esc(a.name)}</b><small>${esc(meta)}</small></span>`
+    + (removable ? `<button type="button" class="rm" data-rm="${esc(a.id)}" title="Entfernen">✕</button>` : "") + `</div>`;
+}
+const renderAtts = () => { $("atts").innerHTML = atts.map(a => attHtml(a, true)).join(""); };
+
+function showLightbox(html) { $("lightbox").firstElementChild.innerHTML = html; $("lightbox").classList.add("on"); }
+function showAttachment(a) {
+  if (a && a.kind === "image") showLightbox(`<img src="${esc(viewUrl(a))}" alt="">`);
+  else if (a && a.text) showLightbox(`<div class="lhead">${esc(a.name)}</div><pre>${esc(a.text)}</pre>`);
+}
+$("lightbox").onclick = e => { if (e.target === $("lightbox") || e.target.tagName === "IMG") $("lightbox").classList.remove("on"); };
+$("atts").onclick = e => {
+  const rm = e.target.closest("[data-rm]");
+  if (rm) { atts = atts.filter(a => a.id !== rm.dataset.rm); renderAtts(); return; }
+  const el = e.target.closest(".att"); if (el) showAttachment(atts.find(a => a.id === el.dataset.att));
+};
+$("log").addEventListener("click", e => {
+  const el = e.target.closest(".msg.user [data-att]");
+  if (el) showAttachment(branch().flatMap(m => m.attachments || []).find(a => a.id === el.dataset.att));
+});
+$("attach").onclick = () => $("fileIn").click();
+$("fileIn").onchange = () => { addFiles([...$("fileIn").files]); $("fileIn").value = ""; };
+let pasted = 0;
+$("input").addEventListener("paste", e => {        // screenshots from the clipboard
+  const items = [...(e.clipboardData?.items || [])];
+  const files = items.filter(i => i.kind === "file").map(i => i.getAsFile()).filter(Boolean)
+    .map(f => !f.name || f.name === "image.png"           // the browser's name for any pasted image
+      ? new File([f], `Eingefügtes Bild ${++pasted}.${(f.type.split("/")[1] || "png").replace("jpeg", "jpg")}`, {type: f.type}) : f);
+  if (!files.length) return;
+  if (!items.some(i => i.type === "text/plain")) e.preventDefault();
+  addFiles(files);
+});
+let dragDepth = 0;                                  // dragenter/leave fire for every child element
+const dragsFiles = e => [...(e.dataTransfer?.types || [])].includes("Files");
+document.addEventListener("dragenter", e => { if (dragsFiles(e)) { dragDepth++; document.body.classList.add("dropping"); } });
+document.addEventListener("dragleave", e => { if (dragsFiles(e) && --dragDepth <= 0) { dragDepth = 0; document.body.classList.remove("dropping"); } });
+document.addEventListener("dragover", e => { if (dragsFiles(e)) e.preventDefault(); });   // otherwise the window opens the file
+document.addEventListener("drop", e => {
+  if (!dragsFiles(e)) return;
+  e.preventDefault(); dragDepth = 0; document.body.classList.remove("dropping");
+  addFiles([...e.dataTransfer.files]);
+});
+
+const fence = t => "`".repeat(Math.max(3, (t.match(/`+/g) || []).reduce((n, s) => Math.max(n, s.length + 1), 0)));
+function userContent(m) {           // OpenAI content: a string, or parts when there are images
+  const att = m.attachments || [];
+  if (!att.length) return m.content;
+  const docs = att.filter(a => a.kind === "text").map(a => { const f = fence(a.text); return `Attached file "${a.name}":\n${f}\n${a.text}\n${f}`; });
+  const text = [...docs, m.content].filter(Boolean).join("\n\n");
+  const imgs = att.filter(a => a.kind === "image");
+  if (!imgs.length) return text;
+  return [...imgs.flatMap(a => [{type: "text", text: `Attached image "${a.name}":`}, {type: "image_url", image_url: {url: a.url}}]),
+          ...(text ? [{type: "text", text}] : [])];
+}
+
 // ---- sending -----------------------------------------------------------
 function toOpenWebUI() {
   const msgs = chat.history.messages;
@@ -1283,7 +1448,7 @@ Be concise. When finished, summarize what you changed. Answer in the user's lang
 function payload(upto) {
   const out = chat.workdir ? [{role: "system", content: sysPrompt()}] : [];
   for (const m of branch()) {
-    if (m.role === "user") out.push({role: "user", content: m.content});
+    if (m.role === "user") out.push({role: "user", content: userContent(m)});
     else if (m.steps) for (const s of m.id === upto ? m.steps.slice(0, -1) : m.steps) {  // current message: finished steps only
       if (s.calls && s.calls.length) s.calls.forEach((c, i) => {   // one call per message: Llama 3.1 on vLLM rejects parallel calls in the history
         out.push({role: "assistant", content: i ? null : s.content || null,
@@ -1301,7 +1466,11 @@ async function streamStep(msgs, step, ctrl) {
   if (chat.workdir) body.tools = TOOLS;
   const r = await fetch("/v1/chat/completions", {...json("POST", body), signal: ctrl.signal});
   if (r.status === 401) { showLogin(); throw new Error("Nicht angemeldet"); }
-  if (!r.ok) throw new Error(`${r.status} ${(await r.text()).slice(0, 300)}`);
+  if (!r.ok) {
+    const t = await r.text(); let msg;
+    try { msg = JSON.parse(t).error?.message; } catch {}
+    throw new Error(msg || `${r.status} ${t.slice(0, 300)}`);
+  }
   const rd = r.body.getReader(), dec = new TextDecoder(); let buf = "";
   for (;;) {
     const {done, value} = await rd.read(); if (done) break;
@@ -1348,14 +1517,15 @@ async function runCall(c, ctrl) {
   if (!r.is_error && (c.name === "write_file" || c.name === "edit_file")) refreshTab(norm(args.path || ""));
 }
 
-async function send(text) {
+async function send(text, attachments = []) {
   const m = chat.history.messages, parent = chat.history.currentId;
   const u = {id: uuid(), parentId: parent, childrenIds: [], role: "user", content: text, timestamp: now(), models: [chat.model]};
+  if (attachments.length) u.attachments = attachments;
   const a = {id: uuid(), parentId: u.id, childrenIds: [], role: "assistant", content: "", steps: [], model: chat.model,
              modelName: $("model").selectedOptions[0].text, modelIdx: 0, timestamp: now(), done: false, started: Date.now()};
   u.childrenIds.push(a.id); if (parent) m[parent].childrenIds.push(u.id);
   m[u.id] = u; m[a.id] = a; chat.history.currentId = a.id;
-  if (chat.title === "Neuer Chat") chat.title = text.replace(/\s+/g, " ").slice(0, 50);
+  if (chat.title === "Neuer Chat") chat.title = (text || attachments.map(a => a.name).join(", ")).replace(/\s+/g, " ").slice(0, 50);
 
   const ctrl = streaming = new AbortController();
   render();
@@ -1382,12 +1552,18 @@ async function send(text) {
   loadList();
 }
 
-$("form").onsubmit = e => {
+let submitting = false;          // waiting for attachments that are still being read
+$("form").onsubmit = async e => {
   e.preventDefault();
   if (streaming) return streaming.abort();
-  const text = $("input").value.trim(); if (!text) return;
+  if (submitting || (!$("input").value.trim() && !atts.length)) return;
+  submitting = true;
+  try { await Promise.all(atts.map(a => a.ready)); } finally { submitting = false; }
+  const text = $("input").value.trim(), ready = atts.filter(a => !a.error);
+  if (!text && !ready.length) return;                 // only failed attachments: they stay visible with their error
   $("input").value = ""; $("input").style.height = "auto";
-  send(text);
+  atts = []; renderAtts();
+  send(text, ready.map(({busy, ready, error, ...a}) => a));
 };
 $("input").onkeydown = e => {   // Enter sends; while an answer runs only the stop button ends it
   if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (!streaming) $("form").requestSubmit(); }

@@ -133,6 +133,26 @@ _POW = _Pow()
 
 
 # ---- prompt building --------------------------------------------------------------------------
+def _is_image(part) -> bool:
+    return isinstance(part, dict) and part.get("type") in ("image_url", "input_image", "image")
+
+
+def _no_images(messages: list) -> list:
+    """The web chat reads no images.  An image in the newest user message is an error the user
+    should see; older ones (the chat began with another model) become a note in the transcript."""
+    last_user = next((m for m in reversed(messages) if isinstance(m, dict) and m.get("role") == "user"), None)
+    if last_user and isinstance(last_user.get("content"), list) and any(map(_is_image, last_user["content"])):
+        raise ProxyError("DeepSeek (Web) kann keine Bilder lesen. Entferne das Bild oder wähle ein Modell mit "
+                         "Bildeingabe.", 400)
+    out = []
+    for m in messages:
+        if isinstance(m, dict) and isinstance(m.get("content"), list) and any(map(_is_image, m["content"])):
+            m = {**m, "content": "\n".join("[image omitted: this model cannot see images]" if _is_image(c)
+                                           else str(c.get("text") or "") for c in m["content"] if isinstance(c, dict))}
+        out.append(m)
+    return out
+
+
 def build_prompt(messages: list[dict], tools: list[dict] | None) -> str:
     """The transcript as one prompt, with earlier tool calls written as the instruction asks."""
     turns = _turns(messages, tools)
@@ -531,6 +551,7 @@ class DeepSeek(Backend):
 
     async def chat(self, p: dict, data: dict):
         name = data.get("model") or MODELS[0]["id"]
+        data["messages"] = _no_images(data.get("messages") or [])
         try:
             try:
                 result = await complete(p, data, name)

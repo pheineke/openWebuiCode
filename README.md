@@ -99,6 +99,12 @@ links → Abmelden (alle) oder **Strg+,** → **Anbieter** → Abmelden (einer).
 
 - **Ordner** (Chip über dem Eingabefeld): Arbeitsordner wählen. Dann darf das Modell dort lesen, ändern und
   Befehle ausführen. Schreiben und Befehle fragen nach, außer du stellst „Auto“ ein.
+- **Anhänge**: Büroklammer im Eingabefeld, Dateien ins Fenster ziehen oder einfügen (**Strg+V**, z. B. ein
+  Screenshot). Bilder gehen als Bild an das Modell (größere werden auf 1600 px verkleinert); das braucht ein
+  Modell mit Bildeingabe, DeepSeek (Web) kann keine Bilder. Text- und Code-Dateien sowie PDF, Word (`.docx`),
+  PowerPoint (`.pptx`) und OpenDocument (`.odt`, `.odp`) gehen als Text in die Nachricht. Gescannte PDFs ohne
+  Textebene, Excel und alte `.doc`/`.ppt` gehen nicht; die App sagt dann, was stattdessen geht. Ein Klick auf
+  einen Anhang zeigt, was das Modell davon bekommt.
 - Oben rechts: **Terminal** und **Dateien** (Code mit Syntaxfarben, bei HTML per Auge-Symbol Vorschau).
 - **Strg+K** durchsucht Chats, **Strg+,** öffnet die Einstellungen (Darstellung, Anbieter, Nutzung).
 

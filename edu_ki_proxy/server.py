@@ -26,7 +26,7 @@ from fastapi.staticfiles import StaticFiles
 
 from pydantic import BaseModel
 
-from . import auth, backends, chats, providers, remote, tools, trace, usage
+from . import auth, backends, chats, extract, providers, remote, tools, trace, usage
 from .backends import ProxyError, emulate
 
 
@@ -424,6 +424,21 @@ async def run_tool(req: ToolReq):
     except tools.ToolError as e:
         trace.log("tool", name=req.name, args=req.args, error=str(e), t=round(time.monotonic() - t0, 1), cap=600)
         return {"output": f"Error: {e}", "is_error": True}
+
+
+MAX_ATTACHMENT = 100 * 1024 * 1024
+
+
+@app.post("/app/extract")
+async def extract_text(request: Request, name: str = ""):
+    """Text of an attached document (PDF, Word, PowerPoint, OpenDocument) for the chat."""
+    if int(request.headers.get("content-length") or 0) > MAX_ATTACHMENT:
+        return JSONResponse({"error": {"message": "Die Datei ist zu groß (höchstens 100 MB)."}}, 413)
+    data = await request.body()
+    try:
+        return await asyncio.to_thread(extract.text_of, name, data)
+    except extract.Unsupported as e:
+        return JSONResponse({"error": {"message": str(e)}}, 400)
 
 
 @app.post("/app/log")

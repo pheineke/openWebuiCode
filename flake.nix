@@ -11,7 +11,7 @@
       forAllSystems = f: nixpkgs.lib.genAttrs [ "x86_64-linux" "aarch64-linux" ]
         (system: f nixpkgs.legacyPackages.${system});
 
-      pyDeps = ps: with ps; [ fastapi uvicorn websockets httpx playwright wasmtime pygobject3 ];
+      pyDeps = ps: with ps; [ fastapi uvicorn websockets httpx playwright wasmtime pygobject3 pypdf ];
 
       # Typelibs, GIO modules (glib-networking: TLS for WebKit) and GSettings schemas for the window.
       # wrapGAppsHook4 turns them into GI_TYPELIB_PATH, GIO_EXTRA_MODULES and XDG_DATA_DIRS.
