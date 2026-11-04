@@ -22,7 +22,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request, WebSocket
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from pydantic import BaseModel
@@ -155,7 +155,15 @@ async def v1_chat(request: Request):
             return trace.response(await b.chat(p, {**data, "messages": emulate.messages(data["messages"], [])}))
         trace.log("route", how="native tools", provider=p["id"])
         resp = await b.chat(p, data)
-        if resp.status_code < 400 or not _tool_turns(data.get("messages")):
+        if resp.status_code < 400:
+            if data.get("tools") and data.get("stream") and "text/event-stream" in resp.headers.get("content-type", ""):
+                async def retry():                 # the model wrote "Tool: name" + JSON: it never got the tools
+                    _prompt_tools.add((p["id"], model_name.lower()))
+                    return await emulate.chat(b, p, data)
+                resp = StreamingResponse(emulate.watch_text_calls(resp.body_iterator, retry),
+                                         media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+            return trace.response(resp)
+        if not _tool_turns(data.get("messages")):
             return trace.response(resp)
         body = await _read_body(resp)
         if not TOOL_ROLE_REJECTED.search(body.decode("utf-8", "replace")):

@@ -244,6 +244,115 @@ class ToolStream:
         return [("tool_calls", made)]
 
 
+# ---- tool calls written as text --------------------------------------------------------------
+# An upstream that hides the request's tools from the model (but describes them in the prompt, as
+# LiteLLM does for models it thinks cannot call functions) gets answers like
+#   Ich schaue mir den Ordner an.
+#   Tool: list_dir
+#   {"path": "."}
+# A line like "Tool: name" (also **bold** or `code`) followed by JSON is taken as such a call.
+_TEXT_CALL = re.compile(r"[ \t>]*(?:\*\*|__|`)?\s*tool(?:[ _-]?(?:call|use|name))?\s*:\s*(?:\*\*|__|`)?\s*`?"
+                        r"[A-Za-z_][\w.\-]*`?\s*(?:\*\*|__|`)?\s*", re.I)
+_LINE_MAX = 160     # a line this long without the call's name is ordinary text
+
+
+class TextCallWatch:
+    """Passes the text of a native-tools answer through until such a call shows up.  Only the start of a
+    line that could still become "Tool: ..." is held back, so normal answers stream as before."""
+
+    def __init__(self):
+        self.buf = ""
+        self.free = False       # the current line is known to be ordinary text
+
+    def feed(self, text: str) -> tuple[str, bool]:
+        """(text that can be shown now, whether a call written as text was found)."""
+        self.buf += text
+        out = []
+        while self.buf:
+            nl = self.buf.find("\n")
+            if self.free:
+                if nl < 0:
+                    out.append(self.buf)
+                    self.buf = ""
+                    break
+                out.append(self.buf[:nl + 1])
+                self.buf, self.free = self.buf[nl + 1:], False
+                continue
+            line = self.buf if nl < 0 else self.buf[:nl]
+            head = line.lstrip(" \t>*_`").lower()
+            if not "tool".startswith(head[:4]) or len(line) > _LINE_MAX:
+                self.free = True
+                continue
+            if nl < 0:
+                break                              # wait for the rest of the line
+            if _TEXT_CALL.fullmatch(line):
+                after = self.buf[nl + 1:].lstrip()
+                if after.startswith("`"):          # the JSON may come in a ```json block
+                    fence = re.match(r"`{3,}[\w-]*[ \t]*\n\s*", after)
+                    if fence:
+                        after = after[fence.end():]
+                    elif "\n" not in after and len(after) < 20:
+                        break                      # the fence is still arriving
+                if not after:
+                    break                          # wait for what follows the line
+                if after[0] in "{[":
+                    return "".join(out), True
+            out.append(line + "\n")
+            self.buf = self.buf[nl + 1:]
+        return "".join(out), False
+
+    def flush(self) -> str:
+        rest, self.buf, self.free = self.buf, "", False
+        return rest
+
+
+def _with_content(o: dict, content: str, keep_finish: bool = True) -> dict:
+    o = json.loads(json.dumps(o))
+    ch = o["choices"][0]
+    ch.setdefault("delta", {})["content"] = content
+    if not keep_finish:
+        ch["finish_reason"] = None
+    return o
+
+
+async def watch_text_calls(body, retry):
+    """A native-tools SSE answer, passed on as it comes, unless the model writes a tool call as text.
+    Then the rest is dropped and retry() (tools in the prompt) answers in the same stream."""
+    watch = TextCallWatch()
+    try:
+        async for o in _objects(body):
+            ch = (o.get("choices") or [None])[0] if isinstance(o, dict) else None
+            d = ch.get("delta") if isinstance(ch, dict) else None
+            c = d.get("content") if isinstance(d, dict) else None
+            if isinstance(c, str) and c:
+                show, found = watch.feed(c)
+                if found:
+                    if show:
+                        yield _sse(_with_content(o, show, keep_finish=False))
+                    trace.log("route", how="model wrote a tool call as text: retrying with tools in the prompt")
+                    await _close(body)
+                    resp = await retry()
+                    if "text/event-stream" in resp.headers.get("content-type", ""):
+                        async for chunk in resp.body_iterator:
+                            yield chunk
+                    else:
+                        msg = (getattr(resp, "body", b"") or b"").decode("utf-8", "replace")[:300]
+                        yield _sse({"error": {"message": f"Anbieter-Fehler: {msg}"}})
+                        yield b"data: [DONE]\n\n"
+                    return
+                if not show and not ch.get("finish_reason") and len(d) == 1:
+                    continue                       # everything in this chunk is held back for now
+                o = _with_content(o, show)
+            elif isinstance(ch, dict) and ch.get("finish_reason") and (rest := watch.flush()):
+                yield _sse(_with_content(o, rest, keep_finish=False))    # held text before the end
+            yield _sse(o)
+        if rest := watch.flush():
+            yield _sse({"choices": [{"index": 0, "delta": {"content": rest}, "finish_reason": None}]})
+        yield b"data: [DONE]\n\n"
+    finally:
+        await _close(body)
+
+
 # ---- chat-completions upstreams that drop tools -----------------------------------------------
 def wanted(p: dict, model: str) -> bool:
     return model.lower() in {m.lower() for m in p.get("emulate_tools") or []}

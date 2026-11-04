@@ -134,9 +134,10 @@ um (`backends/emulate.py`; DeepSeek arbeitet immer so, und falls DeepSeek doch s
 schreibt, wird das ebenfalls erkannt). Ohne gewählten Ordner bekommen solche Modelle frühere Tool-Aufrufe im
 Chat als Text.
 
-Lehnt ein Anbieter Tool-Ergebnisse ab (z. B. Claude hinter LiteLLM: `Unexpected role "tool"`), schickt der Proxy
-die Anfrage von selbst noch einmal mit den Tools im Prompt und bleibt für dieses Modell dabei, bis die App
-beendet wird. Dauerhaft geht das über den Eintrag oben.
+Das erkennt der Proxy auch selbst: Schreibt ein Modell einen Tool-Aufruf als Text (eine Zeile `Tool: list_dir`
+und danach JSON) oder lehnt der Anbieter Tool-Ergebnisse ab (z. B. Claude hinter LiteLLM:
+`Unexpected role "tool"`), blendet er das aus, schickt die Anfrage noch einmal mit den Tools im Prompt und bleibt
+für dieses Modell dabei, bis die App beendet wird. Dauerhaft geht das über den Eintrag oben.
 
 ### Aufbau
 
