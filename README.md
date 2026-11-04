@@ -36,15 +36,27 @@ Nach der Freigabe steht die Änderung als Zeile im Chat (`+53 −0` = hinzugefü
 ```bash
 git clone git@github.com:pheineke/openWebuiCode.git
 cd openWebuiCode
-python3 -m venv --system-site-packages .venv   # --system-site-packages, damit PyGObject sichtbar ist
+./start.sh
+```
+
+`start.sh` legt beim ersten Start die `.venv` an (mit `--system-site-packages`, damit PyGObject sichtbar ist),
+installiert die Requirements und startet die App. Es repariert eine `.venv` ohne pip oder ohne
+`--system-site-packages` und installiert neu, wenn sich `requirements.txt` oder die Python-Version ändert.
+Von Hand geht das so:
+
+```bash
+python3 -m venv --system-site-packages .venv
 .venv/bin/pip install -r requirements.txt
 ```
 
 ## Starten
 
 ```bash
-.venv/bin/python -m edu_ki_proxy app
+./start.sh                  # oder: .venv/bin/python -m edu_ki_proxy app
 ```
+
+Argumente gehen an die App weiter, z. B. `./start.sh --debug` oder `./start.sh --port 8788`. Das Skript
+funktioniert auch über einen Symlink, etwa `ln -s "$PWD/start.sh" ~/.local/bin/edu-ki-code`.
 
 Beim ersten Start siehst du den Anmeldebildschirm mit allen eingerichteten Anbietern. **Anmelden** öffnet die
 Anmeldeseite des Anbieters; die App übernimmt danach die Sitzung, prüft sie beim Anbieter und springt zurück.
