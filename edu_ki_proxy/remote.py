@@ -357,6 +357,20 @@ exit 0''', [path])   # the loop's own status is that of its last test, not an er
     return {"path": here, "parent": posixpath.dirname(here) if here != "/" else None, "dirs": sorted(lines[1:], key=str.lower)}
 
 
+MKDIR_SCRIPT = r'''d=$1; case "$d" in "~") d=$HOME;; "~/"*) d=$HOME/${d#"~/"};; esac; [ -n "$d" ] || d=$HOME
+cd "$d" 2>/dev/null || { echo "$1: Ordner nicht gefunden" >&2; exit 90; }
+[ -e "$2" ] && { echo "„$2“ gibt es hier schon." >&2; exit 91; }
+mkdir -- "$2" || exit 92
+cd -- "$2" && pwd -P'''
+
+
+async def mkdir(conn, path: str, name: str) -> dict:
+    """New folder `name` inside `path` (folder picker); returns its full path."""
+    rc, out, err = await run(conn, MKDIR_SCRIPT, [path, name])
+    _check(rc, err)
+    return {"path": out.decode("utf-8", errors="replace").strip().splitlines()[-1]}
+
+
 async def test(fields: dict) -> dict:
     """Try a connection without saving it."""
     conn = normalize(fields)

@@ -223,8 +223,33 @@ textarea{flex:1;resize:none;border:0;outline:0;background:transparent;font:inher
 .send{border:0;border-radius:8px;background:none;color:var(--muted);width:32px;height:32px;display:grid;place-items:center;flex:none}
 .send:hover{color:var(--accent)}
 .send.stop{color:var(--danger)}
-.bar{display:flex;align-items:center;margin-top:6px;font-size:13px}
+.bar{display:flex;align-items:center;gap:4px;margin-top:6px;font-size:13px}
 .bar .sp{flex:1}
+.bar .chip{background:none;padding:4px 8px}
+.bar .chip:hover{background:var(--panel)}
+/* actions under a message (on hover; always under the last one) and copy buttons on code blocks */
+.acts{display:flex;align-items:center;gap:2px;margin-top:2px;min-height:28px;color:var(--muted);opacity:0;transition:opacity .12s}
+.msg:hover .acts,.msg:last-child .acts,.acts:focus-within{opacity:1}
+.msg.user .acts{justify-content:flex-end}
+.acts button,.ccopy{border:0;background:none;color:inherit;width:28px;height:26px;border-radius:6px;display:grid;place-items:center;padding:0;cursor:pointer}
+.acts button:hover:not(:disabled){background:var(--panel);color:var(--text)}
+.acts button:disabled{opacity:.35;cursor:default}
+.acts button.ok,.ccopy.ok{color:var(--accent)}
+.acts svg,.ccopy svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.acts .sib{display:inline-flex;align-items:center;font-size:12px;font-variant-numeric:tabular-nums;margin-right:4px}
+.acts .sib button{width:22px}
+.codeblock{position:relative}
+.ccopy{position:absolute;top:6px;right:6px;background:color-mix(in srgb,var(--code) 70%,#888);color:var(--code-fg);opacity:0;transition:opacity .12s}
+.codeblock:hover .ccopy,.ccopy:focus-visible{opacity:.9}
+.ccopy.ok{opacity:1}
+.msg.user.editing{align-items:stretch}
+.msg textarea.edit{flex:none;width:100%;box-sizing:border-box;min-height:84px;max-height:50vh;border:1px solid var(--accent);border-radius:12px;background:var(--panel);padding:10px 12px;resize:vertical}
+.ebtns{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}
+.ebtns button{border:1px solid var(--line);background:var(--bg);color:var(--text);border-radius:8px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer}
+.ebtns button.ok{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.pnew{display:flex;align-items:center;gap:6px;cursor:default}
+.pnew input{flex:1;font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--accent);border-radius:6px;padding:4px 8px}
+.pnew small{color:var(--danger)}
 select.plain{-webkit-appearance:none;appearance:none;font:inherit;font-size:13px;color:var(--muted);background:transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238d8d92' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 4px center/12px;border:0;border-radius:6px;padding:4px 22px 4px 6px;max-width:260px;cursor:pointer}
 select.plain:hover,select.plain:focus{color:var(--text);outline:0}
 select.plain option{background:var(--panel);color:var(--text)}
@@ -255,7 +280,11 @@ main{position:relative}
 @keyframes bl{0%,100%{opacity:.25;transform:scale(.8)}50%{opacity:1;transform:scale(1.15)}}
 .flink{color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent)}
 #topbar{height:40px;flex:none;display:flex;align-items:center;gap:12px;padding:0 10px 0 22px}
-.shell #topbar{padding-right:56px}      /* the native window's close button overlays the far right of this bar */
+/* The native window's buttons overlay the corners. The window reports their real widths (--wc-start,
+   --wc-end), which depend on the desktop: GNOME shows only "close", KDE also minimize and maximize. */
+.shell #topbar{padding-right:calc(var(--wc-end, 46px) + 10px)}
+.shell .brand{padding-left:calc(16px + var(--wc-start, 0px))}
+html.shell.sb-collapsed #topbar{padding-left:calc(10px + var(--wc-start, 0px))}
 .ttl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:var(--muted)}
 #tools{display:flex;gap:2px;flex:none}
 .tbtn{border:0;background:none;color:var(--muted);padding:0;width:30px;height:30px;border-radius:8px;display:grid;place-items:center}
@@ -364,16 +393,6 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
 <main>
   <div id="log"></div>
   <div class="composer">
-    <div class="chips">
-      <div class="menuwrap">
-        <button class="chip" id="mode" type="button"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></svg><span>Lokal</span></button>
-        <div class="menu" id="modeMenu"></div>
-      </div>
-      <div class="menuwrap">
-        <button class="chip" id="folder" type="button"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>Kein Ordner</span></button>
-        <div class="menu" id="folderMenu"></div>
-      </div>
-    </div>
     <form id="form">
       <div class="atts" id="atts"></div>
       <button class="send" id="attach" type="button" title="Datei oder Bild anhängen (auch per Ziehen oder Einfügen)"><svg viewBox="0 0 24 24"><path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg></button>
@@ -382,12 +401,20 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
       <input type="file" id="fileIn" multiple hidden>
     </form>
     <div class="bar">
-      <div class="menuwrap" id="permWrap" style="display:none">
-        <button class="plainbtn" id="permBtn" type="button" title="Rückfragen"><span></span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
-        <div class="menu" id="permMenu"></div>
-        <select id="perm" hidden><option value="ask">Mit Rückfrage</option><option value="auto">Auto</option></select>
+      <div class="menuwrap">
+        <button class="chip" id="mode" type="button"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></svg><span>Lokal</span></button>
+        <div class="menu" id="modeMenu"></div>
+      </div>
+      <div class="menuwrap">
+        <button class="chip" id="folder" type="button"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>Kein Ordner</span></button>
+        <div class="menu" id="folderMenu"></div>
       </div>
       <span class="sp"></span>
+      <div class="menuwrap" id="permWrap" style="display:none">
+        <button class="plainbtn" id="permBtn" type="button" title="Rückfragen"><span></span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="menu r" id="permMenu"></div>
+        <select id="perm" hidden><option value="ask">Mit Rückfrage</option><option value="auto">Auto</option></select>
+      </div>
       <div class="menuwrap">
         <button class="plainbtn" id="modelBtn" type="button" title="Modell"><span></span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
         <div class="menu r" id="modelMenu"></div>
@@ -431,7 +458,7 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
   <h3>Arbeitsordner wählen</h3>
   <input id="pPath" spellcheck="false">
   <div id="pList"></div>
-  <div class="prow"><button id="pNone">Ohne Ordner</button><button id="pCancel">Abbrechen</button><button class="ok" id="pOk">Diesen Ordner wählen</button></div>
+  <div class="prow"><button id="pNew">Neuer Ordner</button><span style="flex:1"></span><button id="pNone">Ohne Ordner</button><button id="pCancel">Abbrechen</button><button class="ok" id="pOk">Diesen Ordner wählen</button></div>
 </div></div>
 <div id="login"><div class="card" style="max-width:520px">
   <h1>Anmelden</h1>
@@ -522,10 +549,11 @@ async function loadModels() {
   }
   sel.innerHTML = opts.join("");
   const ids = Object.keys(MODEL_META);
-  sel.value = ids.includes(keep) ? keep : (ids[0] || "");
+  sel.value = chat && ids.includes(chat.model) ? chat.model : ids.includes(keep) ? keep : (ids[0] || "");   // the open chat keeps its model
+  if (chat && !ids.includes(chat.model)) chat.model = sel.value;
   if (sel.refreshLabel) sel.refreshLabel();
 }
-$("model").onchange = () => { localStorage.model = $("model").value; if (chat) { chat.model = $("model").value; chat.provider = modelProvider(chat.model); } };
+$("model").onchange = () => { localStorage.model = $("model").value; if (chat) chat.model = $("model").value; };   // the chat stays where it is stored (save())
 
 async function loadList() {
   const r = await api("/app/chats");
@@ -798,6 +826,7 @@ document.addEventListener("keydown", e => {
 
 function newChat() {
   if (streaming) streaming.abort();
+  editId = null;
   const model = $("model").value || Object.keys(MODEL_META)[0] || "";
   chat = {id: null, title: "Neuer Chat", model, provider: modelProvider(model), source: modelIsOW(model) ? "openwebui" : "local",
           conn: null, workdir: localStorage.workdir || null, perm: "ask", history: {messages: {}, currentId: null}, updated_at: 0};
@@ -806,13 +835,15 @@ function newChat() {
 
 async function openChat(id, provider, source) {
   if (streaming) streaming.abort();
+  editId = null;
   const url = `/app/chats/${encodeURIComponent(id)}` + owq(provider);
   const c = await api(url);
   const h = c.chat || {};
   const savedConn = h.conn && connOf(h.conn) ? h.conn : null;   // a connection that is gone: fall back to local
-  let model = c.model || (h.models || [])[0] || $("model").value;
+  let model = (MODEL_META[h.app_model] ? h.app_model : null) || c.model || (h.models || [])[0] || $("model").value;
   const pid = c.provider || provider;
   if (!MODEL_META[model] && pid && MODEL_META[`${pid}/${model}`]) model = `${pid}/${model}`;   // Open WebUI stores the bare model name
+  if (!MODEL_META[model]) model = $("model").value;              // that model is gone: carry on with the selected one
   chat = {id, title: c.title || "Chat", conn: savedConn, workdir: h.conn && !savedConn ? null : (h.workdir || null), perm: "ask", model,
           provider: c.provider || provider || modelProvider(model), source: c.source || source || (modelIsOW(model) ? "openwebui" : "local"),
           history: h.history || {messages: {}, currentId: null}, updated_at: c.updated_at, raw: h};
@@ -829,11 +860,17 @@ function branch() {          // linear path root -> currentId
 function md(text) {
   const parts = text.split(/```/);
   return parts.map((p, i) => {
-    if (i % 2) { const nl = p.indexOf("\n"); return `<pre><code>${esc(p.slice(nl + 1).replace(/\n$/, ""))}</code></pre>`; }
+    if (i % 2) { const nl = p.indexOf("\n");
+      return `<div class="codeblock"><button class="ccopy" type="button" title="Code kopieren">${COPY}</button><pre><code>${esc(p.slice(nl + 1).replace(/\n$/, ""))}</code></pre></div>`; }
     return esc(p).split(/\n{2,}/).map(par => `<p>${par.replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/\n/g, "<br>")}</p>`).join("");
   }).join("");
 }
 const ARROW = '<svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+const COPY = '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>';
+const CHECK = '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+const REDO = '<svg viewBox="0 0 24 24"><path d="M20 11.5A8 8 0 1 1 17.6 6"/><path d="M20 4v5h-5"/></svg>';
+const PEN = '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>';
+const PREV = '<svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>', NEXT = '<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>';
 const STOP = '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg>';
 let userFirst = "";
 const openSet = new Set();
@@ -964,8 +1001,15 @@ function reportDrag() {
     // The sidebar button is always clickable, so the strip is split around it: left of it, and from it to the tool buttons.
     const tools = $("tools").getBoundingClientRect();
     const showing = sbState === "open" || sbPeek;
-    const btn = (showing ? $("sbToggle") : $("sbOpen")).getBoundingClientRect();
-    const segs = [[0, btn.left - 4], [btn.right + 4, tools.left - 8]].map(([x0, x1]) => [Math.max(0, Math.floor(x0)), Math.floor(x1)]).filter(([x0, x1]) => x1 > x0);
+    let {left, right} = (showing ? $("sbToggle") : $("sbOpen")).getBoundingClientRect();
+    if (sbState === "collapsed" && sbPeek) {
+      // Peeking: the pointer is still where the open button was. A drag strip there is a native widget on
+      // top of the page, so the page would see the pointer leave the sidebar, close it, see the pointer
+      // back on the button, open it again, and so on. So nothing from that button to the pin button drags.
+      const o = $("sbOpen").getBoundingClientRect();
+      left = Math.min(left, o.left); right = Math.max(right, o.right);
+    }
+    const segs = [[0, left - 4], [right + 4, tools.left - 8]].map(([x0, x1]) => [Math.max(0, Math.floor(x0)), Math.floor(x1)]).filter(([x0, x1]) => x1 > x0);
     window.webkit.messageHandlers.shell.postMessage(JSON.stringify({drag: segs}));
   } catch {}
 }
@@ -1066,13 +1110,16 @@ function callHtml(c) {
   return `<details class="call ${c.status}" data-k="${esc(k)}"${open ? " open" : ""}><summary><span class="ttl">${esc(title)}</span><span class="st">${label}</span></summary>${detail ? `<pre><code>${esc(detail)}</code></pre>` : ""}${btns}</details>`;
 }
 function msgHtml(m) {
+  if (m.role === "user" && m.id === editId)
+    return `<div class="msg user editing"><textarea class="edit" id="editBox" rows="3">${esc(editDraft)}</textarea>`
+      + `<div class="ebtns"><button type="button" data-edit="cancel">Abbrechen</button><button type="button" class="ok" data-edit="send">Senden</button></div></div>`;
   if (m.role === "user") {
     const att = m.attachments || [];
     const row = items => items.length ? `<div class="atts">${items.join("")}</div>` : "";
     const imgs = row(att.filter(a => a.kind === "image").map(a =>
       `<img class="shot" src="${esc(viewUrl(a))}" alt="${esc(a.name)}" title="${esc(a.name)}" data-att="${esc(a.id)}">`));
     const docs = row(att.filter(a => a.kind !== "image").map(a => attHtml(a, false)));
-    return `<div class="msg user"><div class="who">Du</div>${imgs}${docs}${m.content ? `<div class="body">${esc(m.content)}</div>` : ""}</div>`;
+    return `<div class="msg user"><div class="who">Du</div>${imgs}${docs}${m.content ? `<div class="body">${esc(m.content)}</div>` : ""}${actsHtml(m)}</div>`;
   }
   const steps = m.steps || [{content: m.content, reasoning: m.reasoning, calls: []}];
   let inner = steps.map((s, i) => {
@@ -1082,8 +1129,66 @@ function msgHtml(m) {
   }).join("");
   if (!m.done) inner += statusHtml(m);
   const err = m.error ? `<div class="err">${esc(m.error)}</div>` : "";
-  return `<div class="msg"><div class="who">${esc(m.modelName || modelName(m.model) || "")}</div>${inner}${err}</div>`;
+  return `<div class="msg"><div class="who">${esc(m.modelName || modelName(m.model) || "")}</div>${inner}${err}${m.done === false ? "" : actsHtml(m)}</div>`;
 }
+
+// ---- message actions: copy, edit, regenerate, and switching between versions ----------------------
+let editId = null, editDraft = "";      // the user message being edited in place
+function siblings(m) {                  // versions of a message: the other answers to the same question, or edits
+  const msgs = chat.history.messages;
+  const ids = m.parentId ? (msgs[m.parentId] || {}).childrenIds || [] : Object.values(msgs).filter(x => !x.parentId).map(x => x.id);
+  return ids.filter(id => msgs[id]);
+}
+function leaf(id) {                     // newest message below id: where the conversation continues
+  const msgs = chat.history.messages;
+  while (msgs[id] && (msgs[id].childrenIds || []).length) id = msgs[id].childrenIds[msgs[id].childrenIds.length - 1];
+  return id;
+}
+function actsHtml(m) {
+  const sib = siblings(m), i = sib.indexOf(m.id), busy = streaming ? " disabled" : "";
+  const nav = sib.length > 1 ? `<span class="sib"><button type="button" data-sib="-1" title="Vorherige Version"${i > 0 && !streaming ? "" : " disabled"}>${PREV}</button>`
+    + `<span>${i + 1}/${sib.length}</span><button type="button" data-sib="1" title="Nächste Version"${i < sib.length - 1 && !streaming ? "" : " disabled"}>${NEXT}</button></span>` : "";
+  const btn = (act, icon, title, extra = "") => `<button type="button" data-ma="${act}" title="${title}"${extra}>${icon}</button>`;
+  const own = m.role === "user" ? btn("edit", PEN, "Bearbeiten", busy)
+    : btn("regen", REDO, "Neu generieren (mit dem gewählten Modell)", busy);
+  return `<div class="acts" data-mid="${esc(m.id)}">${nav}${btn("copy", COPY, "Kopieren")}${own}</div>`;
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return; } catch {}
+  const ta = document.createElement("textarea");             // fallback where the clipboard API is not allowed
+  ta.value = text; ta.style.cssText = "position:fixed;opacity:0"; document.body.appendChild(ta); ta.select();
+  try { document.execCommand("copy"); } finally { ta.remove(); }
+}
+function flash(btn) {
+  btn.innerHTML = CHECK; btn.classList.add("ok");
+  setTimeout(() => { btn.innerHTML = COPY; btn.classList.remove("ok"); }, 1200);
+}
+function sendEdit() {
+  const old = chat.history.messages[editId], text = ($("editBox") || {}).value?.trim() ?? editDraft.trim();
+  if (!old || streaming || (!text && !(old.attachments || []).length)) return;
+  editId = null;
+  send(text, old.attachments || [], old.parentId);           // a new version of the question, next to the old one
+}
+$("log").addEventListener("click", async e => {
+  const cc = e.target.closest(".ccopy");
+  if (cc) { await copyText(cc.parentElement.querySelector("code").textContent); return flash(cc); }
+  const ed = e.target.closest("[data-edit]");
+  if (ed) { if (ed.dataset.edit === "send") sendEdit(); else { editId = null; render(); } return; }
+  const b = e.target.closest(".acts button"); if (!b || b.disabled) return;
+  const m = chat.history.messages[b.closest(".acts").dataset.mid]; if (!m) return;
+  if (b.dataset.sib) {
+    const sib = siblings(m), next = sib[sib.indexOf(m.id) + +b.dataset.sib];
+    if (next && !streaming) { chat.history.currentId = leaf(next); render(); if (chat.id) save().catch(() => {}); }
+  } else if (b.dataset.ma === "copy") { await copyText(m.content || ""); flash(b); }
+  else if (b.dataset.ma === "edit" && !streaming) { editId = m.id; editDraft = m.content || ""; render(); }
+  else if (b.dataset.ma === "regen" && !streaming && m.parentId && chat.history.messages[m.parentId]) reply(chat.history.messages[m.parentId]);
+});
+$("log").addEventListener("input", e => { if (e.target.id === "editBox") editDraft = e.target.value; });
+$("log").addEventListener("keydown", e => {
+  if (e.target.id !== "editBox") return;
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendEdit(); }
+  else if (e.key === "Escape") { e.stopPropagation(); editId = null; render(); }
+});
 function render() {
   curIdx = fileIndex();
   $("ttl").textContent = chat.id || branch().length ? chat.title : "";
@@ -1093,6 +1198,8 @@ function render() {
   log.innerHTML = msgs.length ? msgs.map(msgHtml).join("")
     : `<div class="hello"><i>✳</i>Was steht an${userFirst ? ", " + esc(userFirst) : ""}?</div>${chat.workdir ? "" : `<div class="hint">Wähle unten einen Ordner${connOf(chat.conn) ? " auf " + esc(connOf(chat.conn).name) : ""}, damit ich Dateien lesen und ändern kann – oder chatte einfach los.</div>`}`;
   if (stick) log.scrollTop = log.scrollHeight;
+  const eb = $("editBox");
+  if (eb && document.activeElement !== eb) { eb.focus(); eb.setSelectionRange(eb.value.length, eb.value.length); }
   const busy = !!streaming;
   $("send").innerHTML = busy ? STOP : ARROW;
   $("send").title = busy ? "Stopp" : "Senden";
@@ -1266,7 +1373,29 @@ $("folderMenu").onclick = e => {
   if (it.dataset.open) openPicker();
   else setWorkdir(it.dataset.none ? null : it.dataset.path);
 };
-$("pList").onclick = e => { const i = e.target.closest(".pi"); if (i) pickerLoad(i.dataset.p).catch(() => {}); };
+$("pList").onclick = e => { const i = e.target.closest(".pi[data-p]"); if (i) pickerLoad(i.dataset.p).catch(() => {}); };
+$("pNew").onclick = () => {                        // new folder in the one shown, then go into it
+  let row = $("pList").querySelector(".pnew");
+  if (!row) {
+    row = document.createElement("div"); row.className = "pi pnew";
+    row.innerHTML = `📁 <input placeholder="Name des neuen Ordners" spellcheck="false"><small></small>`;
+    $("pList").prepend(row);
+    const inp = row.querySelector("input");
+    inp.onkeydown = async e => {
+      if (e.key === "Escape") { e.stopPropagation(); row.remove(); return; }
+      if (e.key !== "Enter" || !inp.value.trim()) return;
+      e.preventDefault();
+      try {
+        const r = await api("/app/fs/mkdir", json("POST", {path: pCur, name: inp.value.trim(), conn: chat.conn}));
+        await pickerLoad(r.path);
+      } catch (err) {
+        let msg = String(err.message); try { msg = JSON.parse(msg.replace(/^\d+\s*/, "")).error.message; } catch {}
+        row.querySelector("small").textContent = msg;
+      }
+    };
+  }
+  $("pList").scrollTop = 0; row.querySelector("input").focus();
+};
 $("pPath").onkeydown = e => { if (e.key === "Enter") pickerLoad($("pPath").value).catch(() => {}); };
 $("pOk").onclick = () => setWorkdir(pCur);
 $("pNone").onclick = () => setWorkdir(null);
@@ -1367,7 +1496,10 @@ $("log").addEventListener("click", e => {
   const el = e.target.closest(".msg.user [data-att]");
   if (el) showAttachment(branch().flatMap(m => m.attachments || []).find(a => a.id === el.dataset.att));
 });
-$("attach").onclick = () => $("fileIn").click();
+$("attach").onclick = () => {
+  shellPost({pickdir: chat && !chat.conn ? chat.workdir || "" : ""});   // app window: where its file dialog starts
+  $("fileIn").click();
+};
 $("fileIn").onchange = () => { addFiles([...$("fileIn").files]); $("fileIn").value = ""; };
 let pasted = 0;
 $("input").addEventListener("paste", e => {        // screenshots from the clipboard
@@ -1406,18 +1538,20 @@ function userContent(m) {           // OpenAI content: a string, or parts when t
 function toOpenWebUI() {
   const msgs = chat.history.messages;
   const flat = Object.values(msgs).sort((a, b) => a.timestamp - b.timestamp);
-  return {id: chat.id || "", title: chat.title, models: [modelName(chat.model)], params: {},
+  return {id: chat.id || "", title: chat.title, models: [modelName(chat.model)], params: {}, app_model: chat.model,
           history: chat.history, workdir: chat.workdir, conn: chat.conn, messages: flat, tags: [], files: [], timestamp: Date.now()};
 }
 async function save() {
-  const pid = modelProvider(chat.model);
-  if (!modelIsOW(chat.model)) {
+  // A chat stays where it was first saved (Open WebUI or this computer), also when a model of another
+  // provider answers later on; chat.provider is where it is stored, not the provider of the current model.
+  if (!chat.id) { chat.source = modelIsOW(chat.model) ? "openwebui" : "local"; chat.provider = modelProvider(chat.model); }
+  if (chat.source !== "openwebui") {
     const r = await api("/app/chats", json("POST", {id: chat.id || "", title: chat.title, model: chat.model,
-      provider: pid, history: chat.history, workdir: chat.workdir, conn: chat.conn}));
-    chat.id = r.id; chat.updated_at = r.updated_at; chat.source = "local"; chat.provider = pid;
+      provider: chat.provider, history: chat.history, workdir: chat.workdir, conn: chat.conn}));
+    chat.id = r.id; chat.updated_at = r.updated_at;
     return;
   }
-  const q = owq(pid);
+  const q = owq(chat.provider);
   if (!chat.id) {
     const c = await api(OW + "v1/chats/new" + q, json("POST", {chat: toOpenWebUI(), folder_id: null}));
     chat.id = c.id; chat.updated_at = c.updated_at;
@@ -1425,7 +1559,6 @@ async function save() {
     const c = await api(OW + `v1/chats/${chat.id}` + q, json("POST", {chat: toOpenWebUI()}));
     chat.updated_at = c.updated_at;
   }
-  chat.source = "openwebui"; chat.provider = pid;
 }
 
 const TOOLS = [
@@ -1517,15 +1650,22 @@ async function runCall(c, ctrl) {
   if (!r.is_error && (c.name === "write_file" || c.name === "edit_file")) refreshTab(norm(args.path || ""));
 }
 
-async function send(text, attachments = []) {
-  const m = chat.history.messages, parent = chat.history.currentId;
+async function send(text, attachments = [], parent = chat.history.currentId) {   // parent: null for a new first message
+  const m = chat.history.messages;
   const u = {id: uuid(), parentId: parent, childrenIds: [], role: "user", content: text, timestamp: now(), models: [chat.model]};
   if (attachments.length) u.attachments = attachments;
+  if (parent && m[parent]) m[parent].childrenIds.push(u.id);
+  m[u.id] = u;
+  if (chat.title === "Neuer Chat") chat.title = (text || attachments.map(a => a.name).join(", ")).replace(/\s+/g, " ").slice(0, 50);
+  await reply(u);
+}
+
+async function reply(u) {          // a new answer to user message u (also: "regenerate"), with the model now selected
+  const m = chat.history.messages;
   const a = {id: uuid(), parentId: u.id, childrenIds: [], role: "assistant", content: "", steps: [], model: chat.model,
              modelName: $("model").selectedOptions[0].text, modelIdx: 0, timestamp: now(), done: false, started: Date.now()};
-  u.childrenIds.push(a.id); if (parent) m[parent].childrenIds.push(u.id);
-  m[u.id] = u; m[a.id] = a; chat.history.currentId = a.id;
-  if (chat.title === "Neuer Chat") chat.title = (text || attachments.map(a => a.name).join(", ")).replace(/\s+/g, " ").slice(0, 50);
+  u.childrenIds.push(a.id);
+  m[a.id] = a; chat.history.currentId = a.id;
 
   const ctrl = streaming = new AbortController();
   render();

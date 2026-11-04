@@ -8,6 +8,7 @@ is reached it reads the session (cookies + token) out of WebKit and hands it to 
 second browser window is needed.
 """
 import json
+import os
 import re
 import threading
 import time
@@ -18,7 +19,7 @@ try:
     gi.require_version("Gtk", "4.0")
     gi.require_version("Adw", "1")
     gi.require_version("WebKit", "6.0")
-    from gi.repository import Adw, Gdk, GLib, Gtk, WebKit
+    from gi.repository import Adw, Gdk, Gio, GLib, Gtk, WebKit
 except (ImportError, AttributeError, ValueError) as e:
     # AttributeError: `gi` is only a folder without PyGObject (another package ships gi/overrides/...).
     # ValueError: PyGObject is there, but GTK 4, libadwaita or WebKitGTK 6 is not.
@@ -183,6 +184,7 @@ def build_window(app: Adw.Application, url: str):
         refresh_handles()
 
     flow = LoginFlow(view, url, show_login_bar, lambda text: label.set_text(text))
+    picker = {"last": None, "chat": None}      # file dialog: folder of the last attachment, the chat's folder
     cancel.connect("clicked", lambda *_: flow.cancel())
 
     manager = view.get_user_content_manager()
@@ -208,6 +210,8 @@ def build_window(app: Adw.Application, url: str):
             refresh_handles()
         if "bg" in msg:
             chrome(str(msg.get("bg", "")), str(msg.get("mode", "auto")))
+        if "pickdir" in msg:       # the chat's working folder: second choice for the file dialog's start
+            picker["chat"] = str(msg.get("pickdir") or "") or None
 
     manager.connect("script-message-received::shell", on_message)
     view.load_uri(url)
@@ -221,13 +225,90 @@ def build_window(app: Adw.Application, url: str):
 
     # Window buttons live in a bar exactly as tall as the page's header and are centred in it, so they
     # line up with the page's own header buttons whatever size the theme draws them.
-    controls = Gtk.WindowControls(side=Gtk.PackType.END, valign=Gtk.Align.CENTER, margin_end=10)
-    bar = Gtk.Box(halign=Gtk.Align.END, valign=Gtk.Align.START, height_request=DRAG_HEIGHT)
-    bar.append(controls)
+    # Both sides: the desktop decides where the buttons go (GNOME: close on the right; KDE: minimize,
+    # maximize, close; some put them on the left). The page leaves room for them (report_controls).
     outer = Gtk.Overlay(child=content)
-    outer.add_overlay(bar)
+    sides = {}
+    for side, align in ((Gtk.PackType.START, Gtk.Align.START), (Gtk.PackType.END, Gtk.Align.END)):
+        sides[side] = Gtk.WindowControls(side=side, valign=Gtk.Align.CENTER, margin_start=10, margin_end=10)
+        bar = Gtk.Box(halign=align, valign=Gtk.Align.START, height_request=DRAG_HEIGHT)
+        bar.append(sides[side])
+        outer.add_overlay(bar)
+    settings = Gtk.Settings.get_default()
+
+    def apply_layout(*_):
+        """The desktop's button layout without "icon"/"menu": KDE's default starts with the window icon,
+        which this app does not install, so GTK would draw a broken image there."""
+        parts = ((settings.get_property("gtk-decoration-layout") or ":close") + ":").split(":")[:2]
+        keep = [",".join(b for b in p.split(",") if b.strip() in ("minimize", "maximize", "close")) for p in parts]
+        for c in sides.values():
+            c.set_decoration_layout(":".join(keep))
+        GLib.timeout_add(100, report_controls)
+
+    reported = {"value": None}
+
+    def report_controls(*_) -> bool:
+        """Tell the page how wide the buttons are on each side (CSS --wc-start/--wc-end)."""
+        if urlparse(view.get_uri() or "").netloc != app_netloc:
+            return False
+        if any(not c.get_empty() and c.get_width() == 0 for c in sides.values()):
+            return True                                  # not laid out yet: try again shortly
+        value = tuple(0 if c.get_empty() else c.get_width() + 10 for c in (sides[Gtk.PackType.START], sides[Gtk.PackType.END]))
+        if value != reported["value"]:
+            reported["value"] = value
+            view.evaluate_javascript(
+                f"document.documentElement.style.setProperty('--wc-start','{value[0]}px');"
+                f"document.documentElement.style.setProperty('--wc-end','{value[1]}px');"
+                "window.reportDrag && reportDrag()", -1, None, None, None, None, None)
+        return False
+
+    def page_loaded(_view, event):
+        if event == WebKit.LoadEvent.FINISHED:
+            reported["value"] = None                     # a reloaded page has lost the values
+            GLib.timeout_add(50, report_controls)
+
+    view.connect("load-changed", page_loaded)
+    settings.connect("notify::gtk-decoration-layout", apply_layout)
+    apply_layout()
+
+    # <input type=file> (attachments): GTK's own dialog, in this process (on screen in ~0.1 s). Through the
+    # desktop portal, which WebKit would use, GNOME opens the dialog in Files (Nautilus): seconds, more so
+    # when Files is not running yet. GtkFileChooserDialog is deprecated in favour of the portal-based
+    # GtkFileDialog, but still part of GTK 4.
+    def choose_files(_view, request):
+        multiple = request.get_select_multiple()
+        dialog = Gtk.FileChooserDialog(title="Dateien anhängen" if multiple else "Datei anhängen", transient_for=win,
+                                       modal=True, action=Gtk.FileChooserAction.OPEN)
+        dialog.add_button("Abbrechen", Gtk.ResponseType.CANCEL)
+        dialog.add_button("Anhängen", Gtk.ResponseType.ACCEPT)
+        dialog.set_default_response(Gtk.ResponseType.ACCEPT)
+        dialog.set_select_multiple(multiple)
+        start = next((d for d in (picker["last"], picker["chat"], GLib.get_home_dir()) if d and os.path.isdir(d)), None)
+        if start:          # also keeps GTK from opening on "Recent", which reads the whole recent-files list
+            dialog.set_current_folder(Gio.File.new_for_path(start))
+        if (accept := request.get_mime_types_filter()) is not None:
+            dialog.set_filter(accept)
+
+        def done(d, response):
+            paths = []
+            if response == Gtk.ResponseType.ACCEPT:
+                files = d.get_files()
+                paths = [p for i in range(files.get_n_items()) if (p := files.get_item(i).get_path())]
+            if paths:
+                picker["last"] = os.path.dirname(paths[0])
+                request.select_files(paths)
+            else:
+                request.cancel()
+            d.destroy()
+
+        dialog.connect("response", done)
+        dialog.present()
+        return True
+
+    view.connect("run-file-chooser", choose_files)
 
     win = Adw.ApplicationWindow(application=app, title="EDU-KI Code", default_width=1200, default_height=800, content=outer)
+    win.connect("map", lambda *_: GLib.timeout_add(100, report_controls))
     win.login_flow = flow
 
     keys = Gtk.ShortcutController()

@@ -97,8 +97,14 @@ links → Abmelden (alle) oder **Strg+,** → **Anbieter** → Abmelden (einer).
 
 ## Benutzen
 
-- **Ordner** (Chip über dem Eingabefeld): Arbeitsordner wählen. Dann darf das Modell dort lesen, ändern und
-  Befehle ausführen. Schreiben und Befehle fragen nach, außer du stellst „Auto“ ein.
+- **Ordner** (unter dem Eingabefeld, links): Arbeitsordner wählen; im Auswahlfenster legt **Neuer Ordner**
+  einen an. Dann darf das Modell dort lesen, ändern und Befehle ausführen. Schreiben und Befehle fragen nach,
+  außer du stellst rechts neben dem Modell „Auto“ ein.
+- **Unter jeder Nachricht** (beim Darüberfahren): Kopieren; bei deinen Nachrichten **Bearbeiten**, bei Antworten
+  **Neu generieren** mit dem gerade gewählten Modell. Beides legt eine neue Version an, mit ‹ › wechselst du
+  zwischen den Versionen. Codeblöcke haben oben rechts einen Kopierknopf.
+- Das Modell lässt sich mitten im Chat wechseln, auch zu einem anderen Anbieter; der Chat bleibt dort
+  gespeichert, wo er angelegt wurde.
 - **Anhänge**: Büroklammer im Eingabefeld, Dateien ins Fenster ziehen oder einfügen (**Strg+V**, z. B. ein
   Screenshot). Bilder gehen als Bild an das Modell (größere werden auf 1600 px verkleinert); das braucht ein
   Modell mit Bildeingabe, DeepSeek (Web) kann keine Bilder. Text- und Code-Dateien sowie PDF, Word (`.docx`),

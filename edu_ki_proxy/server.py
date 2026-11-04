@@ -674,6 +674,28 @@ async def fs(path: str = "", conn: str = ""):
     return {"path": str(p), "parent": str(p.parent) if p.parent != p else None, "dirs": dirs}
 
 
+@app.post("/app/fs/mkdir")
+async def fs_mkdir(req: dict):
+    """New folder in the folder picker's current directory."""
+    name = str(req.get("name") or "").strip()
+    if not name or "/" in name or "\0" in name or name in (".", ".."):
+        return JSONResponse({"error": {"message": "Ungültiger Ordnername."}}, 400)
+    try:
+        c = _conn(req.get("conn") or None)
+        if c:
+            return await remote.mkdir(c, str(req.get("path") or ""), name)
+    except tools.ToolError as e:
+        return JSONResponse({"error": {"message": str(e)}}, 400)
+    target = Path(str(req.get("path") or "~")).expanduser().resolve() / name
+    try:
+        target.mkdir()
+    except FileExistsError:
+        return JSONResponse({"error": {"message": f"„{name}“ gibt es hier schon."}}, 400)
+    except OSError as e:
+        return JSONResponse({"error": {"message": e.strerror or str(e)}}, 400)
+    return {"path": str(target)}
+
+
 @app.get("/app/ssh")
 async def ssh_list():
     return {"connections": remote.load()}
