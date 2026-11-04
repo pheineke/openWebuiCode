@@ -7,6 +7,7 @@ refresh from the persistent browser profile is tried before giving up.
 import asyncio
 import json
 import re
+from urllib.parse import quote
 
 import httpx
 from fastapi import Request
@@ -109,6 +110,38 @@ class OpenWebUI(Backend):
         return relay(resp, cli, usage.Tap(p["id"], data.get("model"),
                                           "text/event-stream" in resp.headers.get("content-type", "")))
 
+    async def skills(self, p: dict) -> list[dict]:
+        """Skills from the workspace (Arbeitsbereich -> Skills); versions without them answer with their web
+        page or an error, which counts as none."""
+        try:
+            r = await self.get(p, "v1/skills/")
+            items = r.json() if r.status_code == 200 else []
+        except (httpx.HTTPError, ValueError, ProxyError):
+            return []
+        if isinstance(items, dict):
+            items = items.get("items") or []
+        return [{"id": s["id"], "name": s.get("name") or s["id"], "description": s.get("description") or ""}
+                for s in items if isinstance(s, dict) and s.get("id") and s.get("is_active", True)]
+
+    async def skill(self, p: dict, sid: str) -> str:
+        r = await self.get(p, f"v1/skills/id/{quote(sid, safe='')}")
+        try:
+            content = r.json().get("content") if r.status_code == 200 else None
+        except (ValueError, AttributeError):
+            content = None
+        if not isinstance(content, str):
+            raise ProxyError("Skill nicht gefunden.", 404)
+        return content
+
+    async def model_icon(self, p: dict, model: str) -> tuple[bytes, str] | None:
+        """The picture Open WebUI shows for a model (newer versions serve it separately, not in /models)."""
+        try:
+            r = await self.get(p, "v1/models/model/profile/image", id=model)
+        except (httpx.HTTPError, ProxyError):
+            return None
+        ctype = r.headers.get("content-type", "").split(";")[0]
+        return (r.content, ctype) if r.status_code == 200 and ctype.startswith("image/") else None
+
     async def user(self, p: dict) -> dict | None:
         try:
             r = await self.get(p, "v1/auths/")
@@ -145,7 +178,18 @@ class OpenWebUI(Backend):
                     break
         except (httpx.HTTPError, ValueError):
             pass
-        return out[:limit]
+        out = out[:limit]
+        try:                       # pinned ones are marked; any the plain list leaves out are added
+            r = await self.get(p, "v1/chats/pinned")
+            pinned = r.json() if r.status_code == 200 else []
+        except (httpx.HTTPError, ValueError):
+            pinned = []
+        pinned = [c for c in pinned if isinstance(c, dict) and c.get("id")] if isinstance(pinned, list) else []
+        ids = {c["id"] for c in pinned}
+        for c in out:
+            c["pinned"] = c["id"] in ids
+        out += [self._item(p, c, pinned=True) for c in pinned if c["id"] not in seen]
+        return out
 
     async def chat_search(self, p: dict, q: str) -> list[dict]:
         try:
@@ -163,6 +207,29 @@ class OpenWebUI(Backend):
         raw = r.json()
         chat = raw.get("chat") or {}
         return self._item(p, raw, model=(chat.get("models") or [None])[0], chat=chat)
+
+    async def chat_pin(self, p: dict, cid: str, pinned: bool) -> None:
+        """Open WebUI's own pin (its web UI shows it too). Its endpoint toggles, so the state is checked first."""
+        r = await self.get(p, f"v1/chats/{cid}/pinned")
+        if r.status_code != 200:
+            raise ProxyError("Chat nicht gefunden.", 404)
+        if bool((r.json() or {}).get("pinned")) == pinned:
+            return
+        resp, _ = await self.send(p, "POST", f"v1/chats/{cid}/pin")
+        if resp.status_code >= 400:
+            raise ProxyError(f"Anpinnen fehlgeschlagen (HTTP {resp.status_code}).", 502)
+
+    async def chat_rename(self, p: dict, cid: str, title: str) -> None:
+        """The whole chat is sent back with the new title, which works whether or not the server merges updates."""
+        r = await self.get(p, f"v1/chats/{cid}")
+        if r.status_code != 200:
+            raise ProxyError("Chat nicht gefunden.", 404)
+        chat = (r.json() or {}).get("chat") or {}
+        chat["title"] = title
+        resp, _ = await self.send(p, "POST", f"v1/chats/{cid}", headers={"Content-Type": "application/json"},
+                                  content=json.dumps({"chat": chat}).encode())
+        if resp.status_code >= 400:
+            raise ProxyError(f"Umbenennen fehlgeschlagen (HTTP {resp.status_code}).", 502)
 
     async def chat_delete(self, p: dict, cid: str) -> None:
         resp, _ = await self.send(p, "DELETE", f"v1/chats/{cid}")

@@ -49,8 +49,21 @@ def save(chat: dict) -> dict:
     rec["source"] = "local"
     rec["updated_at"] = now
     rec.setdefault("created_at", (old or {}).get("created_at") or now)
+    rec.setdefault("pinned", bool((old or {}).get("pinned")))      # the app does not send it: keep it
     _write(cid, rec)
     return rec
+
+
+def update(cid: str, **fields) -> bool:
+    """Change title or pinned; the chat keeps its place in the list (updated_at stays)."""
+    if not ID_RE.fullmatch(cid or "") or not _path(cid).exists():
+        return False
+    rec = load(cid)
+    if rec is None:
+        return False
+    rec.update(fields)
+    _write(cid, rec)
+    return True
 
 
 def load(cid: str) -> dict | None:
@@ -76,7 +89,7 @@ def list_all() -> list[dict]:
             continue
         out.append({"id": c.get("id") or f.stem, "title": c.get("title") or "Chat",
                     "updated_at": c.get("updated_at") or 0, "model": c.get("model"),
-                    "provider": c.get("provider"), "source": "local"})
+                    "provider": c.get("provider"), "source": "local", "pinned": bool(c.get("pinned"))})
     out.sort(key=lambda c: c["updated_at"], reverse=True)
     return out
 

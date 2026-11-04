@@ -102,16 +102,24 @@ links → Abmelden (alle) oder **Strg+,** → **Anbieter** → Abmelden (einer).
   außer du stellst rechts neben dem Modell „Auto“ ein.
 - **Unter jeder Nachricht** (beim Darüberfahren): Kopieren; bei deinen Nachrichten **Bearbeiten**, bei Antworten
   **Neu generieren** mit dem gerade gewählten Modell. Beides legt eine neue Version an, mit ‹ › wechselst du
-  zwischen den Versionen. Codeblöcke haben oben rechts einen Kopierknopf.
+  zwischen den Versionen. **Ab hier neuer Chat** setzt das Gespräch bis zu dieser Nachricht in einem neuen Chat
+  fort (bei einer eigenen Nachricht steht sie dort im Eingabefeld); der alte Chat bleibt. Codeblöcke haben oben
+  rechts einen Kopierknopf.
 - Das Modell lässt sich mitten im Chat wechseln, auch zu einem anderen Anbieter; der Chat bleibt dort
   gespeichert, wo er angelegt wurde.
-- **Anhänge**: Büroklammer im Eingabefeld, Dateien ins Fenster ziehen oder einfügen (**Strg+V**, z. B. ein
-  Screenshot). Bilder gehen als Bild an das Modell (größere werden auf 1600 px verkleinert); das braucht ein
+- **Anhänge**: **+** im Eingabefeld → „Datei oder Bild anhängen“, Dateien ins Fenster ziehen oder einfügen
+  (**Strg+V**, z. B. ein Screenshot). Bilder gehen als Bild an das Modell (größere werden auf 1600 px verkleinert); das braucht ein
   Modell mit Bildeingabe, DeepSeek (Web) kann keine Bilder. Text- und Code-Dateien sowie PDF, Word (`.docx`),
   PowerPoint (`.pptx`) und OpenDocument (`.odt`, `.odp`) gehen als Text in die Nachricht. Gescannte PDFs ohne
   Textebene, Excel und alte `.doc`/`.ppt` gehen nicht; die App sagt dann, was stattdessen geht. Ein Klick auf
   einen Anhang zeigt, was das Modell davon bekommt.
+- **Skills**: Unter **+** stehen die Skills aus Open WebUI (z. B. EDU-KI: Arbeitsbereich → Skills). Eingeschaltet
+  gelten sie für den Chat (als Chip über dem Eingabefeld, × schaltet aus): Ihr Text geht als Anweisung an das
+  Modell, auch an Ollama oder DeepSeek. Ein Klick auf den Chip zeigt den Text.
 - Oben rechts: **Terminal** und **Dateien** (Code mit Syntaxfarben, bei HTML per Auge-Symbol Vorschau).
+- **Seitenleiste**: **⋯** am Ende eines Chats (beim Darüberfahren) öffnet **Anpinnen** (oben unter „Angepinnt“),
+  **Umbenennen** (auch per Doppelklick; Enter speichert, Esc bricht ab) und **Löschen**. Bei Open-WebUI-Chats gilt
+  das auch in dessen Weboberfläche.
 - **Strg+K** durchsucht Chats, **Strg+,** öffnet die Einstellungen (Darstellung, Anbieter, Nutzung).
 
 ## Anbieter

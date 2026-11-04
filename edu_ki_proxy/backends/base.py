@@ -108,6 +108,18 @@ class Backend:
     async def user(self, p: dict) -> dict | None:
         return (p.get("session") or {}).get("user")
 
+    async def skills(self, p: dict) -> list[dict]:
+        """Skills (reusable instructions) the service offers: [{"id", "name", "description"}]."""
+        return []
+
+    async def skill(self, p: dict, sid: str) -> str:
+        """A skill's instructions."""
+        raise ProxyError("Skill nicht gefunden.", 404)
+
+    async def model_icon(self, p: dict, model: str) -> tuple[bytes, str] | None:
+        """(image bytes, content type) of a model's picture, if the service has one."""
+        return None
+
     async def test(self, p: dict) -> dict:
         models = await self.models(p)
         return {"ok": bool(models), "models": len(models)} if models else {"ok": False, "error": "keine Modelle"}
@@ -123,4 +135,10 @@ class Backend:
         raise ProxyError("Chat nicht gefunden.", 404)
 
     async def chat_delete(self, p: dict, cid: str) -> None:
+        raise ProxyError("Chat nicht gefunden.", 404)
+
+    async def chat_rename(self, p: dict, cid: str, title: str) -> None:
+        raise ProxyError("Chat nicht gefunden.", 404)
+
+    async def chat_pin(self, p: dict, cid: str, pinned: bool) -> None:
         raise ProxyError("Chat nicht gefunden.", 404)

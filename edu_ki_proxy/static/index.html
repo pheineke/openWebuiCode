@@ -45,6 +45,8 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if
 <style>
 :root{--bg:#f6f6f4;--panel:#fff;--side:#ecece9;--text:#1f1f1f;--muted:#76767a;--line:#dcdcd8;--accent:#1f7a80;--accent-fg:#fff;--user:color-mix(in srgb,var(--accent) 14%,var(--bg));--code:#171a1c;--code-fg:#e6edf3;--danger:#b3261e;--h-kw:#a626a4;--h-str:#50803a;--h-num:#a86a00;--h-com:#8b8b92;--h-fn:#2a6fb5;--h-tag:#c0392b}
 :root[data-theme=dark]{--bg:#161616;--panel:#1e1e1e;--side:#121212;--text:#e9e9e9;--muted:#8d8d92;--line:#2b2b2d;--user:color-mix(in srgb,var(--accent) 18%,var(--bg));--code:#0d0d0e;--danger:#f2b8b5;--h-kw:#c678dd;--h-str:#98c379;--h-num:#d19a66;--h-com:#7f848e;--h-fn:#61afef;--h-tag:#e06c75}
+:root{color-scheme:light}
+:root[data-theme=dark],:root[data-theme=black]{color-scheme:dark}   /* controls, scrollbars and pop-ups the browser draws follow the theme */
 :root[data-theme=black]{--bg:#000;--panel:#0b0b0c;--side:#000;--text:#ececec;--muted:#8a8a8f;--line:#1e1e21;--user:color-mix(in srgb,var(--accent) 20%,#000);--code:#050505;--danger:#f2b8b5;--h-kw:#c678dd;--h-str:#98c379;--h-num:#d19a66;--h-com:#7f848e;--h-fn:#61afef;--h-tag:#e06c75}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
@@ -63,9 +65,16 @@ html.sb-collapsed #topbar{padding-left:10px}
 .chat span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chat:hover{background:var(--panel)}
 .chat.active{background:var(--panel);color:var(--text);box-shadow:inset 2px 0 0 var(--accent)}
-.chat button{border:0;background:none;color:var(--muted);visibility:hidden;padding:0 4px}
-.chat:hover button{visibility:visible}
-.chat button:hover{color:var(--danger)}
+.chat button.more{border:0;background:none;color:var(--muted);display:none;place-items:center;width:24px;height:22px;margin:-3px -4px -3px 0;padding:0;border-radius:6px;flex:none}
+.chat:hover button.more,.chat.menuopen button.more{display:grid}
+.chat button.more:hover,.chat.menuopen button.more{background:var(--side);color:var(--text)}
+.chat button.more svg{width:15px;height:15px;fill:currentColor;stroke:none}
+.chat .pinmark{display:grid;place-items:center;color:var(--accent);flex:none;padding:0 2px}   /* pinned, at rest */
+.chat .pinmark svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.chat:hover .pinmark,.chat.menuopen .pinmark{display:none}
+#chatMenu{position:fixed;bottom:auto;min-width:190px;z-index:30}
+#chatMenu .item.danger{color:var(--danger)}
+.chat input.rename{flex:1;min-width:0;font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--accent);border-radius:6px;padding:2px 6px;outline:none}
 .me{border-top:1px solid var(--line);padding:8px;position:relative}
 #meBtn{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;padding:7px 8px;border-radius:8px;font-size:14px;color:var(--text);text-align:left}
 #meBtn:hover{background:var(--panel)}
@@ -162,11 +171,23 @@ details.think div{white-space:pre-wrap;border-left:2px solid var(--line);padding
 .prow{display:flex;gap:8px;justify-content:flex-end}
 .prow button{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:7px 14px}
 .prow button.ok{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:600}
+/* the app's own confirm/notice dialog (dialog()) */
+#dialog{z-index:40}
+.dcard{width:min(420px,92vw);gap:8px;padding:20px 20px 16px;box-shadow:0 20px 60px #0007}
+.dcard h3{font-size:16px}
+.dcard p{margin:0 0 6px;color:var(--muted);font-size:14px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
+.dcard .prow{margin-top:6px}
+.prow button.ok.danger{background:var(--danger);border-color:var(--danger);color:var(--panel)}
 .msg{max-width:780px}
 .hello{max-width:780px;margin:0 auto;padding:36px 22px 0;font-size:22px;font-weight:500;display:flex;gap:10px;align-items:center}
 .hello i{color:var(--accent);font-style:normal}
 .hint{max-width:780px;margin:8px auto;padding:0 22px;color:var(--muted)}
 .composer{width:100%;max-width:780px;margin:0 auto;padding:0 22px 14px}
+/* empty new chat: greeting and input together around the middle; the first message moves the input down */
+main.newchat{justify-content:center;padding-bottom:16vh}
+main.newchat #log{flex:none;overflow:visible;padding:0 0 18px}
+main.newchat .hello{padding-top:0}
+.menu.down{bottom:auto;top:calc(100% + 6px)}
 .chips{display:flex;gap:6px;margin-bottom:8px}
 .chip{display:inline-flex;align-items:center;gap:6px;font-size:13px;border:0;background:var(--panel);border-radius:8px;padding:5px 10px;max-width:260px;color:var(--muted)}
 .chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -177,15 +198,50 @@ details.think div{white-space:pre-wrap;border-left:2px solid var(--line);padding
 .menu{position:absolute;bottom:calc(100% + 6px);left:0;min-width:200px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:4px;display:none;box-shadow:0 8px 28px #0004;z-index:5}
 .menu.on{display:block}
 .menu.r{left:auto;right:0}
-#modelMenu{min-width:260px;max-height:min(55vh,420px);overflow:auto}
+#modelMenu{max-height:min(55vh,420px);overflow:hidden;padding:0}
+/* model menu: providers on the left, the models of the provider picked there on the right; each column scrolls */
+#modelMenu.on{display:flex}
+#modelMenu .mprov,#modelMenu .mlist{display:block;padding:4px;border-radius:0;overflow-y:auto;min-height:0}
+#modelMenu .mprov{width:190px;flex:none;border-right:1px solid var(--line);background:color-mix(in srgb,var(--side) 40%,var(--panel))}
+#modelMenu .mlist{width:280px}
+#modelMenu .prov{justify-content:flex-start;align-items:center;gap:8px}
+#modelMenu .prov>span:first-child{flex:1;min-width:0}
+#modelMenu .prov.on{background:var(--side)}
+#modelMenu .prov .curdot{width:6px;height:6px;border-radius:50%;background:var(--accent);flex:none}
+#modelMenu .prov .chev{color:var(--muted)}
+#modelMenu .mname{display:flex;align-items:center;gap:9px;min-width:0}
+#modelMenu .mtxt{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.micon{width:20px;height:20px;border-radius:50%;object-fit:cover;flex:none;background:var(--side)}
+.micon.sm{width:16px;height:16px}
+#modelMenu .empty-col{padding:10px;color:var(--muted);font-size:13px}
 #permMenu{min-width:280px}
 .menu .item small.d{display:block;margin:2px 0 0;font-size:12px;white-space:normal}
 .plainbtn{display:inline-flex;align-items:center;gap:4px;border:0;background:none;color:var(--muted);font:inherit;font-size:13px;padding:4px 6px;border-radius:6px;max-width:260px}
 .plainbtn:hover{color:var(--text);background:var(--panel)}
 .plainbtn span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .plainbtn svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+/* icon in front of an option (approval mode), in the button and in its menu */
+.mi{display:inline-grid;place-items:center;flex:none;width:16px;height:16px}
+.mi:empty{display:none}
+.mi svg,.plainbtn .mi svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.menu .mrow{display:flex;gap:9px;align-items:flex-start}
+.menu .mrow .mi{margin-top:1px}
 #folderMenu{min-width:270px;max-width:380px}
 .menu .lbl{color:var(--muted);font-size:12px;padding:8px 10px 3px;display:block}
+/* the composer's + menu: attach files, switch on skills; active skills as chips above the text */
+#plusMenu{width:290px}
+#plusMenu .has-fly>.chev{color:var(--muted);align-self:center}
+#plusMenu .fly{width:320px;overflow:auto;left:calc(100% + 10px)}
+#plusMenu.down .fly{top:-5px;bottom:auto}
+#plusMenu small.d{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#plusMenu .pm-note{display:block;padding:6px 10px 8px;color:var(--muted);font-size:12px;line-height:1.4}
+.skchips{display:flex;flex-wrap:wrap;gap:6px;flex-basis:100%;padding:2px 2px 0}
+.skchips:empty{display:none}
+.skchip{display:inline-flex;align-items:center;gap:6px;max-width:100%;border:1px solid color-mix(in srgb,var(--accent) 45%,var(--line));background:color-mix(in srgb,var(--accent) 12%,var(--panel));color:var(--text);border-radius:999px;padding:3px 4px 3px 9px;font-size:12px;cursor:pointer}
+.skchip svg{width:13px;height:13px;stroke:var(--accent);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.skchip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.skchip button{border:0;background:none;color:var(--muted);width:18px;height:18px;border-radius:50%;display:grid;place-items:center;padding:0;font-size:10px;cursor:pointer}
+.skchip button:hover{color:var(--text);background:var(--side)}
 .menu hr{border:0;border-top:1px solid var(--line);margin:4px 2px}
 .menu .item small{color:var(--muted);margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .menu .item span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -238,6 +294,7 @@ textarea{flex:1;resize:none;border:0;outline:0;background:transparent;font:inher
 .acts svg,.ccopy svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .acts .sib{display:inline-flex;align-items:center;font-size:12px;font-variant-numeric:tabular-nums;margin-right:4px}
 .acts .sib button{width:22px}
+.acts .mtime{font-size:12px;white-space:nowrap;margin:0 6px;cursor:default}
 .codeblock{position:relative}
 .ccopy{position:absolute;top:6px;right:6px;background:color-mix(in srgb,var(--code) 70%,#888);color:var(--code-fg);opacity:0;transition:opacity .12s}
 .codeblock:hover .ccopy,.ccopy:focus-visible{opacity:.9}
@@ -359,6 +416,9 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
 .pform{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px 0 4px}
 .pform label{display:flex;flex-direction:column;gap:4px;font-weight:550;font-size:13px}
 .pform input,.pform select{font:inherit;font-size:14px;font-weight:400;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+/* WebKitGTK draws <select> itself, light whatever the page's colours; drawn by the page instead, with a chevron in theme colours */
+.pform select{appearance:none;-webkit-appearance:none;padding-right:30px;cursor:pointer;background-repeat:no-repeat;background-size:5px 5px;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 16px) 55%,calc(100% - 11px) 55%}
+.pform select:focus{outline:none;border-color:var(--accent)}
 .pform .wide{grid-column:1/-1}
 #loginProviders button,.prow button{border:1px solid var(--line);background:var(--btn);color:var(--fg);padding:7px 12px;border-radius:8px;font:inherit;font-size:13px;cursor:pointer}
 #loginProviders button:hover,.prow button:hover{border-color:var(--accent)}
@@ -394,8 +454,12 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
   <div id="log"></div>
   <div class="composer">
     <form id="form">
+      <div class="skchips" id="skillChips"></div>
       <div class="atts" id="atts"></div>
-      <button class="send" id="attach" type="button" title="Datei oder Bild anhängen (auch per Ziehen oder Einfügen)"><svg viewBox="0 0 24 24"><path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg></button>
+      <div class="menuwrap" id="plusWrap">
+        <button class="send" id="plus" type="button" title="Anhängen und Werkzeuge"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+        <div class="menu" id="plusMenu"></div>
+      </div>
       <textarea id="input" rows="1" placeholder="Aufgabe beschreiben oder Frage stellen"></textarea>
       <button class="send" id="send" type="submit"></button>
       <input type="file" id="fileIn" multiple hidden>
@@ -416,8 +480,8 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
         <select id="perm" hidden><option value="ask">Mit Rückfrage</option><option value="auto">Auto</option></select>
       </div>
       <div class="menuwrap">
-        <button class="plainbtn" id="modelBtn" type="button" title="Modell"><span></span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
-        <div class="menu r" id="modelMenu"></div>
+        <button class="plainbtn" id="modelBtn" type="button" title="Modell"><img class="micon sm" id="modelIcon" alt="" hidden><span></span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="menu r" id="modelMenu" data-fit></div>
         <select id="model" hidden></select>
       </div>
     </div>
@@ -437,6 +501,11 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
   <button class="sx" id="sclose" title="Schließen">✕</button>
 </div></div>
 <div class="overlay" id="lightbox"><div class="lbox"></div></div>
+<div class="menu" id="chatMenu"></div>
+<div class="overlay" id="dialog"><div class="pcard dcard" role="alertdialog" aria-modal="true" aria-labelledby="dTitle" aria-describedby="dText">
+  <h3 id="dTitle"></h3><p id="dText"></p>
+  <div class="prow"><button id="dCancel" type="button">Abbrechen</button><button class="ok" id="dOk" type="button">OK</button></div>
+</div></div>
 <div class="overlay" id="search"><div class="pcard scard">
   <input id="sq" placeholder="Chats durchsuchen…" autocomplete="off" spellcheck="false">
   <div id="sres"></div>
@@ -486,6 +555,33 @@ async function api(path, opts = {}) {
   return r.json();
 }
 const json = (method, body) => ({method, headers: {"content-type": "application/json"}, body: JSON.stringify(body)});
+const errMsg = e => { let m = String(e && e.message || e); try { m = JSON.parse(m.replace(/^\d+\s*/, "")).error.message || m; } catch {} return m; };
+
+// The app's own dialogs instead of confirm()/alert(): the window draws those itself, unstyled, in English and
+// titled with the page's address. Resolves true for the main button, false for cancel, Escape or a click outside.
+function dialog({title, text = "", ok = "OK", cancel = "Abbrechen", danger = false}) {
+  return new Promise(resolve => {
+    const d = $("dialog"), back = document.activeElement;
+    $("dTitle").textContent = title; $("dText").textContent = text; $("dText").hidden = !text;
+    $("dOk").textContent = ok; $("dOk").classList.toggle("danger", danger);
+    $("dCancel").textContent = cancel || ""; $("dCancel").hidden = !cancel;
+    const close = v => {
+      d.classList.remove("on"); document.removeEventListener("keydown", keys, true);
+      if (back && back.focus) back.focus();
+      resolve(v);
+    };
+    const keys = e => {
+      if (e.key !== "Escape" && e.key !== "Enter") return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      close(e.key === "Enter" && document.activeElement !== $("dCancel"));
+    };
+    $("dOk").onclick = () => close(true); $("dCancel").onclick = () => close(false);
+    d.onclick = e => { if (e.target === d) close(false); };
+    document.addEventListener("keydown", keys, true);
+    d.classList.add("on"); (danger && cancel ? $("dCancel") : $("dOk")).focus();   // deleting needs a deliberate click
+  });
+}
+const notice = (title, text = "") => dialog({title, text, cancel: null});
 let debugLog = false;     // server started with --debug: report what the app sees to its log
 const applog = (what, data) => { if (debugLog) fetch("/app/log", json("POST", {what, data})).catch(() => {}); };
 window.addEventListener("error", e => applog("js error", `${e.message} (${e.filename}:${e.lineno})`));
@@ -544,7 +640,7 @@ async function loadModels() {
   const sel = $("model"), keep = localStorage.model;
   MODEL_META = {}; const opts = [];
   for (const p of r.providers || []) for (const m of p.models || []) {
-    MODEL_META[m.id] = {provider: p.id, providerName: p.name, type: p.type, model: m.model || m.id};
+    MODEL_META[m.id] = {provider: p.id, providerName: p.name, type: p.type, model: m.model || m.id, name: m.name || m.model || m.id};
     opts.push(`<option value="${esc(m.id)}">${esc(p.name)} — ${esc(m.name || m.id)}</option>`);
   }
   sel.innerHTML = opts.join("");
@@ -560,12 +656,80 @@ async function loadList() {
   list = r.chats || []; renderList();
 }
 const SEARCH_ICON = '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
+// Sidebar: pinned chats first, then by day. Each chat: pin, rename (also double-click), delete.
+const PIN = '<svg viewBox="0 0 24 24"><path d="M9 3.5h6l-1 6 3.5 3.5h-11L10 9.5z"/><path d="M12 13v7.5"/></svg>';
+let renaming = false;                       // a name is being edited: the list is not redrawn under it
+const renamed = new Map();                  // chat id -> {title, at}: a chat still loading must not bring back the old name
+const chatUrl = c => `/app/chats/${enc(c.id)}${c.source === "local" ? "" : owq(c.provider)}`;
+async function updateChat(c, fields, failTitle) {
+  Object.assign(c, fields);                 // shown at once, saved in the background
+  if (fields.title) renamed.set(c.id, {title: fields.title, at: Date.now()});
+  if (chat && chat.id === c.id && fields.title) { chat.title = fields.title; render(); }
+  renderList();
+  try { await api(chatUrl(c), json("PATCH", fields)); } catch (e) { notice(failTitle, errMsg(e)); }
+  loadList();
+}
+function startRename(el, c) {
+  const span = el.querySelector("span"); if (!span || renaming) return;
+  renaming = true;
+  const inp = document.createElement("input"); inp.className = "rename"; inp.value = c.title || "Chat"; inp.maxLength = 200;
+  span.replaceWith(inp); inp.focus(); inp.select();
+  let done = false;
+  const finish = commit => {
+    if (done) return; done = true; renaming = false; releasePeek();
+    const title = inp.value.replace(/\s+/g, " ").trim();
+    if (commit && title && title !== c.title) updateChat(c, {title}, "Umbenennen fehlgeschlagen"); else renderList();
+  };
+  inp.onkeydown = e => {
+    if (e.key === "Enter") { e.preventDefault(); finish(true); }
+    else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); finish(false); }
+  };
+  inp.onblur = () => finish(true);
+  inp.onclick = inp.ondblclick = e => e.stopPropagation();
+}
+const DOTS = '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>';
+const TRASH = '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
+let chatMenuFor = null;                     // {c, el} while the ⋯ card of a chat is open (the list is not redrawn meanwhile)
+function closeChatMenu() {
+  $("chatMenu").classList.remove("on");
+  if (chatMenuFor) { chatMenuFor.el.classList.remove("menuopen"); chatMenuFor = null; releasePeek(); }
+}
+function openChatMenu(el, c, btn) {
+  const same = chatMenuFor && chatMenuFor.c.id === c.id;
+  closeChatMenu(); if (same) return;
+  const m = $("chatMenu"), row = (act, icon, label, cls = "") => `<div class="item ${cls}" data-cm="${act}"><span class="mrow"><i class="mi">${icon}</i><span>${label}</span></span></div>`;
+  m.innerHTML = row("pin", PIN, c.pinned ? "Lösen" : "Anpinnen") + row("rename", PEN, "Umbenennen") + "<hr>" + row("delete", TRASH, "Löschen", "danger");
+  m.classList.add("on"); el.classList.add("menuopen"); chatMenuFor = {c, el};
+  const r = btn.getBoundingClientRect(), h = m.offsetHeight, w = m.offsetWidth;   // under the button, or above it near the bottom
+  m.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + "px";
+  m.style.top = (r.bottom + 4 + h > innerHeight - 8 ? r.top - 4 - h : r.bottom + 4) + "px";
+}
+$("chatMenu").onclick = e => {
+  const it = e.target.closest("[data-cm]"); if (!it || !chatMenuFor) return;
+  const {c} = chatMenuFor; closeChatMenu();
+  const el = [...document.querySelectorAll(".chat")].find(x => x.dataset.cid === c.id && x.dataset.src === (c.source || ""));
+  if (it.dataset.cm === "pin") updateChat(c, {pinned: !c.pinned}, c.pinned ? "Lösen fehlgeschlagen" : "Anpinnen fehlgeschlagen");
+  else if (it.dataset.cm === "rename" && el) startRename(el, c);
+  else if (it.dataset.cm === "delete") deleteChat(c);
+};
+document.addEventListener("click", e => { if (chatMenuFor && !e.target.closest("#chatMenu, .chat .more")) closeChatMenu(); }, true);
+$("chats").addEventListener("scroll", closeChatMenu);
+async function deleteChat(c) {
+  const where = c.source === "local" ? "" : ` Er wird auch bei ${c.provider_name || "Open WebUI"} gelöscht.`;
+  if (!await dialog({title: "Chat löschen?", text: `„${c.title || "Chat"}“ wird gelöscht.${where} Das lässt sich nicht rückgängig machen.`,
+                     ok: "Löschen", danger: true})) return;
+  const url = c.source === "local" ? `/app/chats/${encodeURIComponent(c.id)}` : OW + `v1/chats/${c.id}${owq(c.provider)}`;
+  try { await api(url, {method: "DELETE"}); } catch (e) { return notice("Löschen fehlgeschlagen", errMsg(e)); }
+  if (chat && chat.id === c.id) newChat();
+  loadList();
+}
 function renderList() {
+  if (renaming || chatMenuFor) return;
   const box = $("chats"); box.innerHTML = "";
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const yest = new Date(today); yest.setDate(yest.getDate() - 1);
-  const groups = [["Heute", []], ["Gestern", []], ["Älter", []]];
-  for (const c of list) { const ms = c.updated_at * 1000; groups[ms >= today ? 0 : ms >= yest ? 1 : 2][1].push(c); }
+  const groups = [["Angepinnt", []], ["Heute", []], ["Gestern", []], ["Älter", []]];
+  for (const c of list) { const ms = c.updated_at * 1000; groups[c.pinned ? 0 : ms >= today ? 1 : ms >= yest ? 2 : 3][1].push(c); }
   const header = (label, withSearch) => {
     const h = document.createElement("div"); h.className = "grp";
     h.innerHTML = `<span>${label}</span><span class="sp"></span>` + (withSearch ? `<button class="gbtn" title="Chats durchsuchen (Strg+K)">${SEARCH_ICON}</button>` : "");
@@ -578,18 +742,14 @@ function renderList() {
     header(label, !any); any = true;
     for (const c of items) {
       const el = document.createElement("div");
-      el.className = "chat" + (chat && chat.id === c.id ? " active" : "");
+      el.className = "chat" + (chat && chat.id === c.id ? " active" : "") + (c.pinned ? " pinned" : "");
+      el.dataset.cid = c.id; el.dataset.src = c.source || "";
       const tag = c.source === "local" ? `<small class="d">lokal</small>` : (c.provider_name ? `<small class="d">${esc(c.provider_name)}</small>` : "");
-      el.innerHTML = `<span>${esc(c.title || "Chat")}${tag}</span><button title="Löschen">✕</button>`;
-      el.onclick = () => openChat(c.id, c.provider, c.source);
-      el.querySelector("button").onclick = async e => {
-        e.stopPropagation();
-        if (!confirm(`„${c.title}“ löschen?`)) return;
-        const url = c.source === "local" ? `/app/chats/${encodeURIComponent(c.id)}` : OW + `v1/chats/${c.id}${owq(c.provider)}`;
-        await api(url, {method: "DELETE"});
-        if (chat && chat.id === c.id) newChat();
-        loadList();
-      };
+      el.innerHTML = `<span>${esc(c.title || "Chat")}${tag}</span>${c.pinned ? `<i class="pinmark" title="Angepinnt">${PIN}</i>` : ""}`
+        + `<button class="more" title="Anpinnen, umbenennen, löschen">${DOTS}</button>`;
+      el.onclick = () => { if (!(chat && chat.id === c.id)) openChat(c.id, c.provider, c.source); };   // the open one: nothing to load
+      el.ondblclick = e => { if (!e.target.closest(".more")) { e.preventDefault(); startRename(el, c); } };
+      el.querySelector(".more").onclick = e => { e.stopPropagation(); openChatMenu(el, c, e.currentTarget); };
       box.append(el);
     }
   }
@@ -636,7 +796,7 @@ async function renderProviders() {
       <button data-act="test" data-pid="${esc(p.id)}">Testen</button>
       <span style="flex:1"></span>
       ${p.logged_in || p.expired ? `<button data-act="logout" data-pid="${esc(p.id)}">Abmelden</button>` : ""}
-      <button data-act="remove" data-pid="${esc(p.id)}" style="color:var(--danger)">Entfernen</button>
+      <button data-act="remove" data-pid="${esc(p.id)}" data-name="${esc(p.name || p.id)}" style="color:var(--danger)">Entfernen</button>
     </div></div>`).join("");
   const types = Object.entries(providerTypes);
   box.innerHTML = `<h2>Anbieter</h2>${rows || '<p class="umuted">Noch kein Anbieter eingerichtet.</p>'}
@@ -651,12 +811,12 @@ async function renderProviders() {
       </div>
       <div class="prow"><span style="flex:1"></span><button class="ok" id="pAdd">Hinzufügen</button></div>
     </div>`;
-  box.querySelectorAll("button[data-act]").forEach(b => b.onclick = () => providerAction(b.dataset.act, b.dataset.pid));
+  box.querySelectorAll("button[data-act]").forEach(b => b.onclick = () => providerAction(b.dataset.act, b.dataset.pid, b.dataset.name));
   box.querySelectorAll("input[data-emu]").forEach(i => i.onchange = async () => {
     try {
       const r = await api(`/app/providers/${encodeURIComponent(i.dataset.emu)}`, json("PATCH", {emulate_tools: i.value}));
       i.value = r.provider.emulate_tools.join(", ");
-    } catch (e) { alert(String(e.message)); }
+    } catch (e) { notice("Speichern fehlgeschlagen", errMsg(e)); }
   });
   const typeInfo = () => providerTypes[$("pType").value] || {fields: []};
   const setFields = () => {
@@ -670,12 +830,12 @@ async function renderProviders() {
     const t = typeInfo(), body = {type: $("pType").value};
     for (const [f, id] of [["name", "pName"], ["base_url", "pBase"], ["api_key", "pKey"], ["models", "pModels"]])
       if (t.fields.includes(f)) body[f] = $(id).value;
-    if (t.base_required && !body.base_url) return alert("Bitte eine Basis-URL angeben.");
+    if (t.base_required && !body.base_url) return notice("Basis-URL fehlt", "Bitte die Adresse des Dienstes angeben.");
     try { await api("/app/providers", json("POST", body)); await loadModels(); renderProviders(); }
-    catch (e) { alert(String(e.message)); }
+    catch (e) { notice("Anbieter nicht hinzugefügt", errMsg(e)); }
   };
 }
-async function providerAction(act, pid) {
+async function providerAction(act, pid, name = "") {
   try {
     if (act === "login") {
       if (windowLogin(pid)) { closeSettings(); return; }
@@ -686,14 +846,15 @@ async function providerAction(act, pid) {
       shellPost({logout: true});     // the app window's stored site data too, or the next login would not ask
       await boot(); renderProviders();
     } else if (act === "remove") {
-      if (!confirm("Diesen Anbieter entfernen?")) return;
+      if (!await dialog({title: "Anbieter entfernen?", text: `„${name || pid}“ wird mit seiner Anmeldung aus der App entfernt. Gespeicherte Chats werden nicht gelöscht.`,
+                         ok: "Entfernen", danger: true})) return;
       await api(`/app/providers/${encodeURIComponent(pid)}`, {method: "DELETE"});
       await loadModels(); renderProviders();
     } else if (act === "test") {
       const r = await api(`/app/providers/${encodeURIComponent(pid)}/test`, {method: "POST"});
-      alert(r.ok ? "Verbindung OK" : ("Fehler: " + (r.error || "unbekannt")));
+      notice(r.ok ? "Verbindung OK" : "Verbindung fehlgeschlagen", r.ok ? "" : r.error || "Unbekannter Fehler.");
     }
-  } catch (e) { alert(String(e.message)); }
+  } catch (e) { notice("Das hat nicht geklappt", errMsg(e)); }
 }
 const fmtN = n => Math.round(n).toLocaleString("de-DE");
 const fmtCost = c => c === 0 ? "$0" : c < 0.01 ? "$" + c.toFixed(4) : "$" + c.toFixed(2);
@@ -770,8 +931,13 @@ function setSidebar(state) {
 function peek(on) {
   clearTimeout(sbTimer);
   if (on) { if (!sbPeek) { sbPeek = true; applySidebar(); } }
-  else sbTimer = setTimeout(() => { sbPeek = false; applySidebar(); }, 220);   // short grace so the pointer can cross over
+  else sbTimer = setTimeout(() => {          // short grace so the pointer can cross over
+    // A chat's ⋯ card lies outside the sidebar and a name may be in editing: the peek stays until they are done.
+    if (chatMenuFor || renaming || document.querySelector("aside").matches(":hover")) return;
+    sbPeek = false; applySidebar();
+  }, 220);
 }
+function releasePeek() { if (sbState === "collapsed" && sbPeek) peek(false); }   // closes it unless the pointer is on it
 $("sbToggle").onclick = () => setSidebar(sbState === "open" ? "collapsed" : "open");   // while peeking: pin it open
 $("sbOpen").onclick = () => setSidebar("open");
 $("sbOpen").onmouseenter = () => peek(true);
@@ -821,7 +987,7 @@ $("search").onclick = e => { if (e.target === $("search")) closeSearch(); };
 document.addEventListener("keydown", e => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("search").classList.contains("on") ? closeSearch() : openSearch(); }
   else if ((e.ctrlKey || e.metaKey) && e.key === ",") { e.preventDefault(); openSettings(); }
-  else if (e.key === "Escape") { $("lightbox").classList.remove("on"); closeSearch(); closeSettings(); $("sshModal").classList.remove("on"); document.querySelectorAll(".menu.on, .umenu.on").forEach(m => m.classList.remove("on")); $("userMenu").classList.remove("on"); $("picker").classList.remove("on"); }
+  else if (e.key === "Escape") { closeChatMenu(); $("lightbox").classList.remove("on"); closeSearch(); closeSettings(); $("sshModal").classList.remove("on"); document.querySelectorAll(".menu.on, .umenu.on").forEach(m => m.classList.remove("on")); $("userMenu").classList.remove("on"); $("picker").classList.remove("on"); }
 });
 
 function newChat() {
@@ -829,15 +995,16 @@ function newChat() {
   editId = null;
   const model = $("model").value || Object.keys(MODEL_META)[0] || "";
   chat = {id: null, title: "Neuer Chat", model, provider: modelProvider(model), source: modelIsOW(model) ? "openwebui" : "local",
-          conn: null, workdir: localStorage.workdir || null, perm: "ask", history: {messages: {}, currentId: null}, updated_at: 0};
+          conn: null, workdir: localStorage.workdir || null, perm: "ask", skills: [], history: {messages: {}, currentId: null}, updated_at: 0};
   resetPanel(); render(); loadList();
 }
 
 async function openChat(id, provider, source) {
   if (streaming) streaming.abort();
   editId = null;
-  const url = `/app/chats/${encodeURIComponent(id)}` + owq(provider);
+  const url = `/app/chats/${encodeURIComponent(id)}` + owq(provider), asked = Date.now();
   const c = await api(url);
+  const r = renamed.get(id); if (r && r.at >= asked) c.title = r.title;   // renamed while this was loading
   const h = c.chat || {};
   const savedConn = h.conn && connOf(h.conn) ? h.conn : null;   // a connection that is gone: fall back to local
   let model = (MODEL_META[h.app_model] ? h.app_model : null) || c.model || (h.models || [])[0] || $("model").value;
@@ -846,7 +1013,7 @@ async function openChat(id, provider, source) {
   if (!MODEL_META[model]) model = $("model").value;              // that model is gone: carry on with the selected one
   chat = {id, title: c.title || "Chat", conn: savedConn, workdir: h.conn && !savedConn ? null : (h.workdir || null), perm: "ask", model,
           provider: c.provider || provider || modelProvider(model), source: c.source || source || (modelIsOW(model) ? "openwebui" : "local"),
-          history: h.history || {messages: {}, currentId: null}, updated_at: c.updated_at, raw: h};
+          skills: Array.isArray(h.skills) ? h.skills : [], history: h.history || {messages: {}, currentId: null}, updated_at: c.updated_at, raw: h};
   if ([...$("model").options].some(o => o.value === chat.model)) $("model").value = chat.model;
   addRecent(chat.workdir); resetPanel(); render(); loadList();
 }
@@ -869,6 +1036,7 @@ const ARROW = '<svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>'
 const COPY = '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>';
 const CHECK = '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 const REDO = '<svg viewBox="0 0 24 24"><path d="M20 11.5A8 8 0 1 1 17.6 6"/><path d="M20 4v5h-5"/></svg>';
+const FORK = '<svg viewBox="0 0 24 24"><circle cx="6" cy="5.5" r="2.2"/><circle cx="6" cy="18.5" r="2.2"/><circle cx="18" cy="5.5" r="2.2"/><path d="M6 7.7v8.6M18 7.7c0 5.3-7.5 4.3-11 8.8"/></svg>';
 const PEN = '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>';
 const PREV = '<svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>', NEXT = '<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>';
 const STOP = '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg>';
@@ -1149,10 +1317,24 @@ function actsHtml(m) {
   const nav = sib.length > 1 ? `<span class="sib"><button type="button" data-sib="-1" title="Vorherige Version"${i > 0 && !streaming ? "" : " disabled"}>${PREV}</button>`
     + `<span>${i + 1}/${sib.length}</span><button type="button" data-sib="1" title="Nächste Version"${i < sib.length - 1 && !streaming ? "" : " disabled"}>${NEXT}</button></span>` : "";
   const btn = (act, icon, title, extra = "") => `<button type="button" data-ma="${act}" title="${title}"${extra}>${icon}</button>`;
-  const own = m.role === "user" ? btn("edit", PEN, "Bearbeiten", busy)
-    : btn("regen", REDO, "Neu generieren (mit dem gewählten Modell)", busy);
-  return `<div class="acts" data-mid="${esc(m.id)}">${nav}${btn("copy", COPY, "Kopieren")}${own}</div>`;
+  const own = (m.role === "user" ? btn("edit", PEN, "Bearbeiten", busy) : btn("regen", REDO, "Neu generieren (mit dem gewählten Modell)", busy))
+    + btn("fork", FORK, m.role === "user" ? "Ab hier neuer Chat (die Nachricht kommt ins Eingabefeld)" : "Ab hier neuer Chat", busy);
+  const when = m.timestamp ? `<span class="mtime" data-ts="${+m.timestamp}" title="${esc(fullTime(m.timestamp))}">${esc(ago(m.timestamp))}</span>` : "";
+  const icons = nav + btn("copy", COPY, "Kopieren") + own;
+  return `<div class="acts" data-mid="${esc(m.id)}">${m.role === "user" ? when + icons : icons + when}</div>`;   // the time on the outer side
 }
+// When a message was sent: "vor 5 Minuten" for a day, then date and time. Timestamps are in seconds
+// (Open WebUI's format); milliseconds are recognised too.
+const tsDate = ts => new Date(ts > 1e12 ? ts : ts * 1000);
+const fullTime = ts => tsDate(ts).toLocaleString("de-DE", {day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"});
+function ago(ts) {
+  const s = (Date.now() - tsDate(ts).getTime()) / 1000;
+  if (s < 60) return "gerade eben";
+  if (s < 3600) { const n = Math.floor(s / 60); return `vor ${n} ${n === 1 ? "Minute" : "Minuten"}`; }
+  if (s < 86400) { const n = Math.floor(s / 3600); return `vor ${n} ${n === 1 ? "Stunde" : "Stunden"}`; }
+  return fullTime(ts);
+}
+setInterval(() => document.querySelectorAll(".mtime[data-ts]").forEach(el => { el.textContent = ago(+el.dataset.ts); }), 30000);
 async function copyText(text) {
   try { await navigator.clipboard.writeText(text); return; } catch {}
   const ta = document.createElement("textarea");             // fallback where the clipboard API is not allowed
@@ -1162,6 +1344,26 @@ async function copyText(text) {
 function flash(btn) {
   btn.innerHTML = CHECK; btn.classList.add("ok");
   setTimeout(() => { btn.innerHTML = COPY; btn.classList.remove("ok"); }, 1200);
+}
+// "Ab hier neuer Chat": a new chat with the conversation up to this message (only the versions shown, not
+// the others). For an own message: up to just before it, and the message waits in the input to be sent.
+function forkAt(m) {
+  const msgs = chat.history.messages, path = [];
+  for (let id = m.role === "user" ? m.parentId : m.id; id && msgs[id]; id = msgs[id].parentId) path.unshift(JSON.parse(JSON.stringify(msgs[id])));
+  path.forEach((x, i) => { x.childrenIds = path[i + 1] ? [path[i + 1].id] : []; if (!i) x.parentId = null; });
+  const old = chat;
+  editId = null;
+  chat = {id: null, title: `${old.title || "Chat"} – Abzweig`, model: old.model, provider: modelProvider(old.model),
+          source: modelIsOW(old.model) ? "openwebui" : "local", conn: old.conn, workdir: old.workdir, perm: old.perm,
+          skills: [...(old.skills || [])], updated_at: 0,
+          history: {messages: Object.fromEntries(path.map(x => [x.id, x])), currentId: path.length ? path[path.length - 1].id : null}};
+  if (m.role === "user") {
+    $("input").value = m.content || ""; $("input").oninput();
+    atts = (m.attachments || []).map(a => ({...a, ready: Promise.resolve()})); renderAtts();
+  }
+  resetPanel(); render(); $("input").focus();
+  if (path.length) save().then(loadList).catch(e => notice("Abzweig nicht gespeichert", errMsg(e)));
+  else loadList();
 }
 function sendEdit() {
   const old = chat.history.messages[editId], text = ($("editBox") || {}).value?.trim() ?? editDraft.trim();
@@ -1182,6 +1384,7 @@ $("log").addEventListener("click", async e => {
   } else if (b.dataset.ma === "copy") { await copyText(m.content || ""); flash(b); }
   else if (b.dataset.ma === "edit" && !streaming) { editId = m.id; editDraft = m.content || ""; render(); }
   else if (b.dataset.ma === "regen" && !streaming && m.parentId && chat.history.messages[m.parentId]) reply(chat.history.messages[m.parentId]);
+  else if (b.dataset.ma === "fork" && !streaming) forkAt(m);
 });
 $("log").addEventListener("input", e => { if (e.target.id === "editBox") editDraft = e.target.value; });
 $("log").addEventListener("keydown", e => {
@@ -1193,8 +1396,10 @@ function render() {
   curIdx = fileIndex();
   $("ttl").textContent = chat.id || branch().length ? chat.title : "";
   $("ptoggle").style.display = chat.workdir ? "" : "none";
+  renderSkillChips();
   const log = $("log"), stick = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
   const msgs = branch();
+  document.querySelector("main").classList.toggle("newchat", !msgs.length);
   log.innerHTML = msgs.length ? msgs.map(msgHtml).join("")
     : `<div class="hello"><i>✳</i>Was steht an${userFirst ? ", " + esc(userFirst) : ""}?</div>${chat.workdir ? "" : `<div class="hint">Wähle unten einen Ordner${connOf(chat.conn) ? " auf " + esc(connOf(chat.conn).name) : ""}, damit ich Dateien lesen und ändern kann – oder chatte einfach los.</div>`}`;
   if (stick) log.scrollTop = log.scrollHeight;
@@ -1230,7 +1435,7 @@ function showModeMenu() {
   const list = connections.map(c => row(`data-conn="${esc(c.id)}"`, esc(c.name), c.host, chat.conn === c.id, c.id)).join("");
   $("modeMenu").innerHTML = row('data-conn=""', "Lokal", "", !chat.conn)
     + `<div class="item has-fly" data-ssh="1"><span>SSH</span><span>›</span><div class="fly">${list}${list ? "<hr>" : ""}${row('data-add="1"', "SSH-Verbindung hinzufügen…", "", false)}</div></div>`;
-  $("modeMenu").classList.add("on");
+  $("modeMenu").classList.add("on"); placeMenu($("modeMenu"));
 }
 $("mode").onclick = e => {
   e.stopPropagation(); $("folderMenu").classList.remove("on");
@@ -1241,7 +1446,8 @@ $("modeMenu").onclick = async e => {
   if (del) {
     e.stopPropagation();
     const c = connOf(del.dataset.del);
-    if (!c || !confirm(`Verbindung „${c.name}“ entfernen?`)) return;
+    if (!c || !await dialog({title: "Verbindung entfernen?", text: `„${c.name}“ (${c.host}) wird aus der Liste entfernt. Auf dem Server ändert sich nichts.`,
+                             ok: "Entfernen", danger: true})) return;
     try { await api("/app/ssh/" + c.id, {method: "DELETE"}); } catch { return; }
     connections = connections.filter(x => x.id !== c.id);
     if (chat.conn === c.id) setConn(null); else render();
@@ -1296,15 +1502,34 @@ $("sshModal").addEventListener("keydown", e => { if (e.key === "Enter" && e.targ
 document.addEventListener("click", () => { $("modeMenu").classList.remove("on"); $("folderMenu").classList.remove("on"); });
 $("perm").onchange = () => { chat.perm = $("perm").value; };
 
+// The menus under the input open up or down, whichever side has the room (the input is in the middle
+// of an empty chat, at the bottom otherwise); a long list scrolls within the space there is.
+function placeMenu(menu) {
+  menu.classList.remove("down"); menu.style.maxHeight = "";
+  const r = menu.parentElement.getBoundingClientRect(), above = r.top - 12, below = innerHeight - r.bottom - 12;
+  const down = menu.scrollHeight > above && below > above;
+  menu.classList.toggle("down", down);
+  const scrolls = "fit" in menu.dataset || /auto|scroll/.test(getComputedStyle(menu).overflowY);   // not menus with fly-outs beside them
+  if (scrolls && menu.scrollHeight > (down ? below : above)) menu.style.maxHeight = Math.max(120, down ? below : above) + "px";
+}
 // Custom dropdowns: the native <select> popup is drawn by the toolkit and cannot be styled. The hidden
 // <select> stays as the data holder, so the rest of the code reads/writes it as before.
-function bindDropdown(sel, btn, menu, describe) {
-  sel.refreshLabel = () => { btn.querySelector("span").textContent = sel.selectedOptions[0] ? sel.selectedOptions[0].text : ""; };
+function bindDropdown(sel, btn, menu, describe, icon) {
+  let mi = null;
+  if (icon) { btn.insertAdjacentHTML("afterbegin", '<i class="mi"></i>'); mi = btn.querySelector(".mi"); }
+  sel.refreshLabel = () => {
+    btn.querySelector("span").textContent = sel.selectedOptions[0] ? sel.selectedOptions[0].text : "";
+    if (mi) mi.innerHTML = icon(sel.value) || "";
+  };
   btn.onclick = () => {
     if (streaming && sel.id === "model") return;
     if (menu.classList.contains("on")) return menu.classList.remove("on");
-    menu.innerHTML = [...sel.options].map(o => `<div class="item" data-v="${esc(o.value)}"><span>${esc(o.text)}${describe ? `<small class="d">${describe(o.value)}</small>` : ""}</span>${o.value === sel.value ? '<span class="ck">✓</span>' : ""}</div>`).join("");
-    menu.classList.add("on");
+    menu.innerHTML = [...sel.options].map(o => {
+      const label = `<span>${esc(o.text)}${describe ? `<small class="d">${describe(o.value)}</small>` : ""}</span>`;
+      return `<div class="item" data-v="${esc(o.value)}">${icon ? `<span class="mrow"><i class="mi">${icon(o.value) || ""}</i>${label}</span>` : label}`
+        + `${o.value === sel.value ? '<span class="ck">✓</span>' : ""}</div>`;
+    }).join("");
+    menu.classList.add("on"); placeMenu(menu);
     const cur = menu.querySelector(".ck"); if (cur) cur.parentElement.scrollIntoView({block: "nearest"});
   };
   menu.onclick = e => {
@@ -1312,8 +1537,70 @@ function bindDropdown(sel, btn, menu, describe) {
     sel.value = it.dataset.v; sel.dispatchEvent(new Event("change")); sel.refreshLabel(); menu.classList.remove("on");
   };
 }
-bindDropdown($("perm"), $("permBtn"), $("permMenu"), v => ({ask: "Vor Änderungen und Befehlen fragen", auto: "Alles ohne Rückfrage ausführen"})[v]);
-bindDropdown($("model"), $("modelBtn"), $("modelMenu"));
+const PERM_ICON = {
+  ask: '<svg viewBox="0 0 24 24"><path d="M12 3l7 3v5.5c0 4.2-2.9 7.8-7 9.5-4.1-1.7-7-5.3-7-9.5V6z"/><path d="M9 12l2.2 2.2L15 10.4"/></svg>',   // shield: you approve
+  auto: '<svg viewBox="0 0 24 24"><path d="M13 3L5 13.5h6.5L11 21l8-10.5h-6.5z"/></svg>',                                       // lightning
+};
+bindDropdown($("perm"), $("permBtn"), $("permMenu"), v => ({ask: "Vor Änderungen und Befehlen fragen", auto: "Alles ohne Rückfrage ausführen"})[v],
+  v => PERM_ICON[v]);
+// Model menu in two columns: the providers, and the models of the provider picked (hover or click) there.
+let menuProv = null, provTimer = null;
+// Pictures of Open WebUI models (as its own web UI shows them), through the server, which caches them.
+const modelIcon = id => { const m = MODEL_META[id]; return m && m.type === "openwebui" ? `/app/model-icon?provider=${enc(m.provider)}&model=${enc(m.model)}` : ""; };
+const badIcons = new Set();                 // pictures that failed to load: not shown again (no new error event)
+function iconFailed(img) { badIcons.add(img.getAttribute("src")); img.style.visibility = "hidden"; }
+$("modelIcon").onerror = () => { badIcons.add($("modelIcon").getAttribute("src")); $("modelIcon").hidden = true; };
+$("model").refreshLabel = () => {
+  const o = $("model").selectedOptions[0], icon = modelIcon($("model").value), img = $("modelIcon");
+  $("modelBtn").querySelector("span").textContent = o ? o.text : "";
+  img.hidden = !icon || badIcons.has(icon);
+  if (icon && img.getAttribute("src") !== icon) img.src = icon;
+};
+function modelMenuHtml() {
+  const provs = [], cur = $("model").value, curProv = (MODEL_META[cur] || {}).provider;
+  for (const [id, m] of Object.entries(MODEL_META)) {
+    let p = provs.find(x => x.id === m.provider);
+    if (!p) provs.push(p = {id: m.provider, name: m.providerName || m.provider, models: []});
+    p.models.push([id, m]);
+  }
+  if (!provs.some(p => p.id === menuProv)) menuProv = curProv || (provs[0] || {}).id;
+  const shown = provs.find(p => p.id === menuProv);
+  const left = provs.map(p => `<div class="item prov${p.id === menuProv ? " on" : ""}" data-p="${esc(p.id)}">`
+    + `<span>${esc(p.name)}<small class="d">${p.models.length} ${p.models.length === 1 ? "Modell" : "Modelle"}</small></span>`
+    + `${p.id === curProv ? '<span class="curdot" title="Das gewählte Modell ist hier"></span>' : ""}<span class="chev">›</span></div>`).join("");
+  const pic = id => { const u = modelIcon(id); return u && !badIcons.has(u) ? u : ""; };
+  const icons = shown && shown.models.some(([id]) => pic(id));          // a picture column only where pictures come
+  const right = shown ? shown.models.map(([id, m]) => `<div class="item" data-v="${esc(id)}" title="${esc(m.model)}"><span class="mname">`
+    + (icons ? (pic(id) ? `<img class="micon" src="${esc(pic(id))}" alt="" onerror="iconFailed(this)">` : '<span class="micon" style="visibility:hidden"></span>') : "")
+    + `<span class="mtxt">${esc(m.name)}</span></span>${id === cur ? '<span class="ck">✓</span>' : ""}</div>`).join("") : "";
+  if (!provs.length) return '<div class="mlist"><div class="empty-col">Kein Anbieter angemeldet</div></div>';
+  if (provs.length === 1) return `<div class="mlist">${right}</div>`;      // one provider: just its models
+  return `<div class="mprov">${left}</div><div class="mlist">${right}</div>`;
+}
+function showProvider(pid) {
+  if (pid === menuProv) return;
+  menuProv = pid;
+  $("modelMenu").innerHTML = modelMenuHtml();
+}
+$("modelBtn").onclick = () => {
+  if (streaming) return;
+  const menu = $("modelMenu");
+  if (menu.classList.contains("on")) return menu.classList.remove("on");
+  menuProv = null; menu.innerHTML = modelMenuHtml();
+  menu.classList.add("on"); placeMenu(menu);
+  const ck = menu.querySelector(".mlist .ck"); if (ck) ck.parentElement.scrollIntoView({block: "nearest"});
+};
+$("modelMenu").onclick = e => {
+  const prov = e.target.closest(".prov");
+  if (prov) { clearTimeout(provTimer); return showProvider(prov.dataset.p); }
+  const it = e.target.closest(".mlist .item"); if (!it) return;
+  $("model").value = it.dataset.v; $("model").dispatchEvent(new Event("change")); $("model").refreshLabel();
+  $("modelMenu").classList.remove("on");
+};
+$("modelMenu").addEventListener("mouseover", e => {     // a short pause, so crossing to the right column does not switch
+  const prov = e.target.closest(".prov"); clearTimeout(provTimer);
+  if (prov && prov.dataset.p !== menuProv) provTimer = setTimeout(() => showProvider(prov.dataset.p), 150);
+});
 // one menu at a time: a click outside the menu's own wrapper closes it
 document.addEventListener("click", e => {
   document.querySelectorAll(".menu.on, .umenu.on").forEach(m => { if (!m.parentElement.contains(e.target)) m.classList.remove("on"); });
@@ -1359,7 +1646,7 @@ async function showFolderMenu() {
         return row(`data-path="${esc(p)}" title="${esc(p)}"`, esc(names[i]), dup ? p.split("/").filter(Boolean).slice(-2, -1)[0] : "", p === chat.workdir);
       }).join("") : "")
     + '<hr>' + row('data-open="1"', "Ordner öffnen…", "", false);
-  $("folderMenu").classList.add("on");
+  $("folderMenu").classList.add("on"); placeMenu($("folderMenu"));
 }
 $("folder").onclick = e => {
   e.stopPropagation();
@@ -1496,10 +1783,93 @@ $("log").addEventListener("click", e => {
   const el = e.target.closest(".msg.user [data-att]");
   if (el) showAttachment(branch().flatMap(m => m.attachments || []).find(a => a.id === el.dataset.att));
 });
-$("attach").onclick = () => {
+// ---- + menu: attach files, and tools to switch on, such as skills -------------------------
+// A skill is a set of instructions from the provider's workspace (Open WebUI: Arbeitsbereich -> Skills).
+// Switched on for a chat, its text goes into the system prompt of every request, for any model.
+const CLIP = '<svg viewBox="0 0 24 24"><path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>';
+const SPARK = '<svg viewBox="0 0 24 24"><path d="M11 4l1.9 5.1L18 11l-5.1 1.9L11 18l-1.9-5.1L4 11l5.1-1.9z"/><path d="M18.5 3v4M16.5 5h4"/></svg>';
+let skillList = null;                       // skills the providers offer (null: not asked yet)
+const skillText = new Map();                // "provider/id" -> instructions, fetched when needed
+const skillKey = s => `${s.provider}/${s.id}`;
+const shorten = (t, n) => t.length > n ? t.slice(0, n - 1).trimEnd() + "…" : t;
+function pickFiles() {
   shellPost({pickdir: chat && !chat.conn ? chat.workdir || "" : ""});   // app window: where its file dialog starts
   $("fileIn").click();
+}
+async function loadSkills() {
+  try { skillList = (await api("/app/skills")).skills || []; } catch { if (skillList === null) skillList = []; }
+}
+async function skillContent(s) {
+  const k = skillKey(s);
+  if (!skillText.has(k)) skillText.set(k, (await api(`/app/skills/${enc(s.provider)}/${enc(s.id)}`)).content || "");
+  return skillText.get(k);
+}
+function skillItemsHtml() {                // the Skills submenu
+  const on = new Set((chat.skills || []).map(skillKey)), many = new Set((skillList || []).map(s => s.provider)).size > 1;
+  if (skillList === null) return '<span class="pm-note">Lädt…</span>';
+  if (!skillList.length) return '<span class="pm-note">Keine Skills. Sie kommen aus Open WebUI (z. B. EDU-KI), dort unter Arbeitsbereich → Skills.</span>';
+  return '<span class="lbl">Für diesen Chat einschalten</span>' + skillList.map(s => `<div class="item" data-skill="${esc(skillKey(s))}"><span class="mrow"><i class="mi">${SPARK}</i>`
+    + `<span>${esc(s.name)}${many ? ` <small>· ${esc(s.provider_name || s.provider)}</small>` : ""}<small class="d">${esc(shorten(s.description || "", 160))}</small></span></span>`
+    + `${on.has(skillKey(s)) ? '<span class="ck">✓</span>' : ""}</div>`).join("");
+}
+const skillsSummary = () => { const n = (chat.skills || []).length; return n ? `${n} aktiv in diesem Chat` : "Anweisungen aus Open WebUI"; };
+function plusMenuHtml() {
+  return `<div class="item" data-plus="file"><span class="mrow"><i class="mi">${CLIP}</i><span>Datei oder Bild anhängen`
+    + `<small class="d">Auch per Ziehen ins Fenster oder Einfügen (Strg+V)</small></span></span></div>`
+    + `<div class="item has-fly" data-plus="skills"><span class="mrow"><i class="mi">${SPARK}</i><span>Skills<small class="d" id="skillSum">${skillsSummary()}</small></span></span>`
+    + `<span class="chev">›</span><div class="fly" id="skillFly">${skillItemsHtml()}</div></div>`;
+}
+function refreshSkillFly() {               // only the submenu and the count, so an open submenu stays open
+  if (!$("skillFly")) return;
+  $("skillFly").innerHTML = skillItemsHtml(); $("skillSum").textContent = skillsSummary(); fitSkillFly();
+}
+function fitSkillFly() {                    // the submenu opens beside its row and scrolls within the window
+  const fly = $("skillFly"); if (!fly) return;
+  const row = fly.parentElement.getBoundingClientRect(), down = $("plusMenu").classList.contains("down");
+  fly.style.maxHeight = Math.max(160, down ? innerHeight - row.top - 12 : row.bottom - 12) + "px";
+  const room = innerWidth - row.right - 22;                 // as wide as there is room for beside the card
+  fly.style.width = Math.max(220, Math.min(320, room)) + "px";
+  fly.style.left = room < 220 ? "auto" : ""; fly.style.right = room < 220 ? "0" : "";   // no room: over the card
+}
+function renderSkillChips() {
+  $("skillChips").innerHTML = (chat && chat.skills || []).map(s => `<span class="skchip" data-sk="${esc(skillKey(s))}" title="${esc(s.name)} – Klick zeigt den Text">`
+    + `${SPARK}<span>${esc(s.name)}</span><button type="button" data-rmskill="${esc(skillKey(s))}" title="Skill ausschalten">✕</button></span>`).join("");
+}
+$("plus").onclick = () => {
+  const m = $("plusMenu");
+  if (m.classList.contains("on")) return m.classList.remove("on");
+  m.innerHTML = plusMenuHtml(); m.classList.add("on"); placeMenu(m); fitSkillFly();
+  loadSkills().then(() => { if (m.classList.contains("on")) refreshSkillFly(); });   // a fresh list each time
 };
+$("plusMenu").addEventListener("mouseover", e => { if (e.target.closest(".has-fly")) fitSkillFly(); });
+$("plusMenu").onclick = e => {
+  const it = e.target.closest(".item"); if (!it) return;
+  if (it.dataset.plus === "file") { $("plusMenu").classList.remove("on"); return pickFiles(); }
+  if (it.dataset.plus === "skills") { it.classList.toggle("open"); return fitSkillFly(); }   // click (or hover) opens the submenu
+  const s = (skillList || []).find(x => skillKey(x) === it.dataset.skill); if (!s) return;
+  const on = (chat.skills || []).some(x => skillKey(x) === skillKey(s));
+  chat.skills = on ? chat.skills.filter(x => skillKey(x) !== skillKey(s)) : [...(chat.skills || []), {id: s.id, name: s.name, provider: s.provider}];
+  if (!on) skillContent(s).catch(() => {});                       // fetched now, so sending does not wait
+  refreshSkillFly(); renderSkillChips();                          // the submenu stays open: several can be chosen
+  if (chat.id) save().catch(() => {});
+};
+$("skillChips").onclick = async e => {
+  const rm = e.target.closest("[data-rmskill]");
+  if (rm) {
+    chat.skills = (chat.skills || []).filter(x => skillKey(x) !== rm.dataset.rmskill); renderSkillChips();
+    if (chat.id) save().catch(() => {});
+    return;
+  }
+  const chip = e.target.closest(".skchip"), s = chip && (chat.skills || []).find(x => skillKey(x) === chip.dataset.sk);
+  if (s) { try { showLightbox(`<div class="lhead">Skill: ${esc(s.name)}</div><pre>${esc(await skillContent(s))}</pre>`); } catch (err) { notice("Skill nicht verfügbar", errMsg(err)); } }
+};
+function skillsPrompt() {
+  const on = (chat.skills || []).filter(s => skillText.get(skillKey(s)));
+  if (!on.length) return "";
+  return "The user switched on the following skills for this chat. Each skill is a set of instructions: follow it "
+    + "whenever the request falls within its scope.\n\n"
+    + on.map(s => `<skill name="${s.name}">\n${skillText.get(skillKey(s)).trim()}\n</skill>`).join("\n\n");
+}
 $("fileIn").onchange = () => { addFiles([...$("fileIn").files]); $("fileIn").value = ""; };
 let pasted = 0;
 $("input").addEventListener("paste", e => {        // screenshots from the clipboard
@@ -1539,7 +1909,7 @@ function toOpenWebUI() {
   const msgs = chat.history.messages;
   const flat = Object.values(msgs).sort((a, b) => a.timestamp - b.timestamp);
   return {id: chat.id || "", title: chat.title, models: [modelName(chat.model)], params: {}, app_model: chat.model,
-          history: chat.history, workdir: chat.workdir, conn: chat.conn, messages: flat, tags: [], files: [], timestamp: Date.now()};
+          history: chat.history, workdir: chat.workdir, conn: chat.conn, skills: chat.skills || [], messages: flat, tags: [], files: [], timestamp: Date.now()};
 }
 async function save() {
   // A chat stays where it was first saved (Open WebUI or this computer), also when a model of another
@@ -1547,7 +1917,7 @@ async function save() {
   if (!chat.id) { chat.source = modelIsOW(chat.model) ? "openwebui" : "local"; chat.provider = modelProvider(chat.model); }
   if (chat.source !== "openwebui") {
     const r = await api("/app/chats", json("POST", {id: chat.id || "", title: chat.title, model: chat.model,
-      provider: chat.provider, history: chat.history, workdir: chat.workdir, conn: chat.conn}));
+      provider: chat.provider, history: chat.history, workdir: chat.workdir, conn: chat.conn, skills: chat.skills || []}));
     chat.id = r.id; chat.updated_at = r.updated_at;
     return;
   }
@@ -1579,7 +1949,8 @@ Read a file before editing it; prefer edit_file for small changes. Verify your w
 Be concise. When finished, summarize what you changed. Answer in the user's language.`;
 
 function payload(upto) {
-  const out = chat.workdir ? [{role: "system", content: sysPrompt()}] : [];
+  const sys = [chat.workdir ? sysPrompt() : "", skillsPrompt()].filter(Boolean).join("\n\n");
+  const out = sys ? [{role: "system", content: sys}] : [];
   for (const m of branch()) {
     if (m.role === "user") out.push({role: "user", content: userContent(m)});
     else if (m.steps) for (const s of m.id === upto ? m.steps.slice(0, -1) : m.steps) {  // current message: finished steps only
@@ -1669,6 +2040,8 @@ async function reply(u) {          // a new answer to user message u (also: "reg
 
   const ctrl = streaming = new AbortController();
   render();
+  const missing = [];                         // skills whose text cannot be fetched go without, and the answer says so
+  await Promise.all((chat.skills || []).map(sk => skillContent(sk).catch(() => { missing.push(sk.name); })));
   try {
     for (let turn = 0; turn < 40 && !ctrl.signal.aborted; turn++) {
       const step = {content: "", reasoning: "", calls: []};
@@ -1680,6 +2053,7 @@ async function reply(u) {          // a new answer to user message u (also: "reg
       if (turn === 39) a.error = "Abbruch: Limit von 40 Schritten erreicht.";
     }
   } catch (e) { if (e.name !== "AbortError") a.error = String(e.message || e); }
+  if (missing.length && !a.error) a.error = `Skill „${missing.join("“, „")}“ konnte nicht geladen werden; die Antwort kam ohne ihn.`;
   const last = a.steps[a.steps.length - 1];
   if (last && !last.content.trim() && !last.calls.length && !a.error && !ctrl.signal.aborted)
     a.error = "Das Modell hat ohne Antwort aufgehört. Schick die Aufgabe noch einmal oder wähle ein anderes Modell.";

@@ -63,7 +63,7 @@ async def local_only(request: Request, call_next):
     if request.headers.get("host") not in ok_hosts or (origin and origin.split("//", 1)[-1] not in ok_hosts):
         return JSONResponse({"error": {"message": "forbidden"}}, 403)
     resp = await call_next(request)
-    if not request.url.path.startswith(("/v1/", "/ow/")):
+    if not request.url.path.startswith(("/v1/", "/ow/", "/app/model-icon")):
         resp.headers["Cache-Control"] = "no-cache"  # UI files: always revalidate, so updates show up immediately
     return resp
 
@@ -227,6 +227,41 @@ async def forward_ow(path: str, request: Request):
 @app.get("/health")
 async def health():
     return {"ok": True}
+
+
+@app.get("/app/skills")
+async def skill_list():
+    """Skills of all logged-in providers (Open WebUI workspaces), for the composer's + menu."""
+    async def one(p: dict) -> list[dict]:
+        return [{**s, "provider": p["id"], "provider_name": p.get("name")} for s in await backends.of(p).skills(p)]
+    out: list[dict] = []
+    for items in await _each([p for p in providers.load() if providers.logged_in(p)], one):
+        out += items
+    return {"skills": out}
+
+
+@app.get("/app/skills/{pid}/{sid}")
+async def skill_get(pid: str, sid: str):
+    p = _logged_in(_provider(pid))
+    return {"content": await backends.of(p).skill(p, sid)}
+
+
+_icons: dict[tuple[str, str], tuple[bytes, str] | None] = {}    # (provider, model) -> picture, or None: has none
+
+
+@app.get("/app/model-icon")
+async def model_icon(provider: str, model: str):
+    """A model's picture from its provider (Open WebUI), fetched once per run."""
+    key = (provider, model)
+    if key not in _icons:
+        p = providers.get(provider)
+        if not p or not providers.logged_in(p):
+            return Response(status_code=404)
+        _icons[key] = await backends.of(p).model_icon(p, model)
+    if not _icons[key]:
+        return Response(status_code=404)
+    body, ctype = _icons[key]
+    return Response(body, media_type=ctype, headers={"Cache-Control": "private, max-age=86400"})
 
 
 # ---- app: status, providers, models -----------------------------------------------------------
@@ -398,6 +433,35 @@ async def chat_get(cid: str, provider: str | None = None):
     for p in _chat_candidates(provider):
         try:
             return await backends.of(p).chat_get(p, cid)
+        except ProxyError:
+            continue
+    raise ProxyError("Chat nicht gefunden.", 404)
+
+
+@app.patch("/app/chats/{cid}")
+async def chat_update(cid: str, req: dict, provider: str | None = None):
+    """Rename ({"title"}) or pin ({"pinned"}) a chat, local or in the provider's history."""
+    fields = {}
+    if "title" in req:
+        fields["title"] = " ".join(str(req.get("title") or "").split())[:200]
+        if not fields["title"]:
+            raise ProxyError("Der Name darf nicht leer sein.", 400)
+    if "pinned" in req:
+        fields["pinned"] = bool(req["pinned"])
+    if not fields:
+        raise ProxyError("Nichts zu ändern.", 400)
+    if cid.startswith("local-"):
+        if not chats.update(cid, **fields):
+            raise ProxyError("Chat nicht gefunden.", 404)
+        return {"ok": True, **fields}
+    for p in _chat_candidates(provider):
+        b = backends.of(p)
+        try:
+            if "title" in fields:
+                await b.chat_rename(p, cid, fields["title"])
+            if "pinned" in fields:
+                await b.chat_pin(p, cid, fields["pinned"])
+            return {"ok": True, **fields}
         except ProxyError:
             continue
     raise ProxyError("Chat nicht gefunden.", 404)
