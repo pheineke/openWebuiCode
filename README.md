@@ -131,7 +131,12 @@ Standard-Anbieter.
 aufzurufen. Trag solche Modell-IDs in der Anbieter-Karte unter **Tools über den Prompt** ein. Dann beschreibt
 der Proxy die Tools im Systemprompt und wandelt die ```` ```tool ````-Blöcke der Antwort in normale Tool-Aufrufe
 um (`backends/emulate.py`; DeepSeek arbeitet immer so, und falls DeepSeek doch sein eigenes DSML-Format
-schreibt, wird das ebenfalls erkannt).
+schreibt, wird das ebenfalls erkannt). Ohne gewählten Ordner bekommen solche Modelle frühere Tool-Aufrufe im
+Chat als Text.
+
+Lehnt ein Anbieter Tool-Ergebnisse ab (z. B. Claude hinter LiteLLM: `Unexpected role "tool"`), schickt der Proxy
+die Anfrage von selbst noch einmal mit den Tools im Prompt und bleibt für dieses Modell dabei, bis die App
+beendet wird. Dauerhaft geht das über den Eintrag oben.
 
 ### Aufbau
 

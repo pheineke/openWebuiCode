@@ -10,6 +10,7 @@ import fcntl
 import json
 import mimetypes
 import os
+import re
 import secrets
 import signal
 import struct
@@ -142,16 +143,56 @@ async def v1_chat(request: Request):
     data["model"] = model_name
     b = backends.of(p)
     try:
-        if b.native_tools and data.get("tools") and emulate.wanted(p, model_name):
+        if not b.native_tools:
+            trace.log("route", how=f"{b.type} backend", provider=p["id"])
+            return trace.response(await b.chat(p, data))
+        in_prompt = emulate.wanted(p, model_name) or (p["id"], model_name.lower()) in _prompt_tools
+        if in_prompt and data.get("tools"):
             trace.log("route", how="tools in the prompt (emulate.py)", provider=p["id"])
             return trace.response(await emulate.chat(b, p, data))
-        trace.log("route", how="native tools" if b.native_tools else f"{b.type} backend", provider=p["id"])
-        return trace.response(await b.chat(p, data))
+        if in_prompt and _tool_turns(data.get("messages")):    # no tools this time, but earlier calls in the chat
+            trace.log("route", how="no tools; earlier tool calls as text", provider=p["id"])
+            return trace.response(await b.chat(p, {**data, "messages": emulate.messages(data["messages"], [])}))
+        trace.log("route", how="native tools", provider=p["id"])
+        resp = await b.chat(p, data)
+        if resp.status_code < 400 or not _tool_turns(data.get("messages")):
+            return trace.response(resp)
+        body = await _read_body(resp)
+        if not TOOL_ROLE_REJECTED.search(body.decode("utf-8", "replace")):
+            return Response(body, status_code=resp.status_code, media_type=resp.headers.get("content-type"))
+        # The upstream takes no tool turns (e.g. Claude behind a gateway that passes OpenAI messages on as
+        # they are): from now on this model gets its tools and their results as text.
+        _prompt_tools.add((p["id"], model_name.lower()))
+        trace.log("route", how="upstream rejects role 'tool': retrying with tools in the prompt", provider=p["id"])
+        if data.get("tools"):
+            return trace.response(await emulate.chat(b, p, data))
+        return trace.response(await b.chat(p, {**data, "messages": emulate.messages(data["messages"], [])}))
     except ProxyError:
         raise
     except Exception:
         trace.log("crash", error=traceback.format_exc(), cap=8000)
         raise
+
+
+# Models whose upstream refused tool turns during this run (provider id, lower-case model id).
+_prompt_tools: set[tuple[str, str]] = set()
+# 'Unexpected role "tool"' (Anthropic via LiteLLM), "invalid role: tool", "role 'tool' is not supported", ...
+TOOL_ROLE_REJECTED = re.compile(r"(unexpected|invalid|unsupported|unknown)\W+role\W+tool\b"
+                                r"|\brole\W+tool\W+(is\s+)?(not\s+allowed|not\s+supported|invalid|unsupported)", re.I)
+
+
+def _tool_turns(msgs) -> bool:
+    return any(isinstance(m, dict) and (m.get("role") == "tool" or m.get("tool_calls")) for m in msgs or [])
+
+
+async def _read_body(resp) -> bytes:
+    """The whole body of an (error) response; a streamed one is consumed, which closes its upstream."""
+    if not hasattr(resp, "body_iterator"):
+        return resp.body
+    chunks = []
+    async for c in resp.body_iterator:
+        chunks.append(c if isinstance(c, bytes) else c.encode())
+    return b"".join(chunks)
 
 
 async def _ow_forward(path: str, request: Request):
