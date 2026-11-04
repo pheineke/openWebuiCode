@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -26,13 +27,20 @@ def run_app(port: int = 8787) -> None:
         sys.exit("server did not start (port in use?)")
     try:
         from . import window
+    except ImportError as e:                 # no usable GTK stack: fall back to a Chromium --app window
+        print(f"{e}\nÖffne stattdessen ein Chromium-Fenster (Pakete für das App-Fenster: README, Voraussetzungen).",
+              file=sys.stderr)
+        window = None
+    if window:
         window.run(url)                      # native GTK/WebKit window; returns when it is closed
-    except ImportError:                      # no GTK stack: fall back to a Chromium --app window
+    else:
         browser = auth.system_browser()
         if not browser:
             from playwright.sync_api import sync_playwright
             with sync_playwright() as p:
                 browser = p.chromium.executable_path
+        if not os.path.exists(browser):
+            sys.exit("Kein Chromium gefunden: chromium installieren oder `.venv/bin/playwright install chromium`.")
         subprocess.run([browser, f"--app={url}", f"--user-data-dir={auth.STATE_DIR / 'app-window'}",
                         "--ozone-platform-hint=auto"], stderr=subprocess.DEVNULL)
     srv.should_exit = True

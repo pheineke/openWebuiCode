@@ -11,6 +11,20 @@ VENV=.venv
 PY=$VENV/bin/python
 STAMP=$VENV/.requirements-stamp
 
+# Under Nix (NixOS, or python3 from a Nix profile) a venv cannot see PyGObject and GTK, so flake.nix
+# brings the whole stack from nixpkgs instead. EDU_KI_NIX=1 or EDU_KI_NIX=0 forces either way.
+use_nix() {
+    case ${EDU_KI_NIX:-} in 1) return 0 ;; 0) return 1 ;; esac
+    command -v nix >/dev/null || return 1
+    [[ -e /etc/NIXOS ]] && return 0
+    local py
+    py=$(command -v "$PYTHON") || return 0
+    [[ $(readlink -f "$py") == /nix/store/* ]]
+}
+if use_nix; then
+    exec nix --extra-experimental-features 'nix-command flakes' run . -- "$@"
+fi
+
 if ! command -v "$PYTHON" >/dev/null; then
     echo "Python 3 fehlt (Fedora: sudo dnf install python3)." >&2
     exit 1

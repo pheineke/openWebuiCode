@@ -27,9 +27,15 @@ Nach der Freigabe steht die Änderung als Zeile im Chat (`+53 −0` = hinzugefü
 - Linux mit Python 3 (getestet mit 3.14; ab 3.10 sollte es reichen)
 - `wasmtime` (wird mit den Requirements installiert) für den DeepSeek-Proof-of-Work
 - Für das App-Fenster: GTK 4, libadwaita, WebKitGTK 6 und PyGObject.
-  Fedora 43 (diese Pakete sind dort installiert): `sudo dnf install python3-gobject gtk4 libadwaita webkitgtk6.0`
-  Fehlen sie, öffnet die App stattdessen ein Chromium-Fenster (dafür `chromium`/`google-chrome` oder
-  `.venv/bin/playwright install chromium`).
+  - Fedora 43 (diese Pakete sind dort installiert): `sudo dnf install python3-gobject gtk4 libadwaita webkitgtk6.0`
+  - Debian/Ubuntu (ab 24.04): `sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-webkit-6.0`
+  - Arch: `sudo pacman -S python-gobject gtk4 libadwaita webkitgtk-6.0`
+  - NixOS / Nix: nichts davon nötig, siehe [Mit Nix](#mit-nix-nixos-oder-nix-auf-einer-anderen-distribution)
+
+  PyGObject kommt aus den Systempaketen, darum muss `python3` die System-Python sein (nicht pyenv, conda
+  o. ä.), sonst sieht die `.venv` es nicht. Fehlt etwas davon, öffnet die App stattdessen ein Chromium-Fenster
+  (dafür `chromium`/`google-chrome` oder `.venv/bin/playwright install chromium`) und schreibt in die Konsole,
+  was fehlt.
 
 ## Einrichten
 
@@ -48,6 +54,23 @@ Von Hand geht das so:
 python3 -m venv --system-site-packages .venv
 .venv/bin/pip install -r requirements.txt
 ```
+
+### Mit Nix (NixOS oder Nix auf einer anderen Distribution)
+
+Unter Nix sieht eine `.venv` PyGObject und GTK nicht. Dafür gibt es `flake.nix`: Es holt Python mit allen
+Paketen, PyGObject, GTK 4, libadwaita, WebKitGTK 6 und Chromium aus nixpkgs, ohne `.venv` und ohne pip.
+`./start.sh` nimmt diesen Weg von selbst unter NixOS und wenn `python3` aus Nix kommt (erzwingen mit
+`EDU_KI_NIX=1`, abschalten mit `EDU_KI_NIX=0`). Direkt mit Nix:
+
+```bash
+nix run .                    # App-Fenster; Argumente nach --, z. B. nix run . -- --debug
+nix run .#cli -- models      # Kommandozeile: serve, login, models, …
+nix develop                  # Shell mit allen Abhängigkeiten, darin: python -m edu_ki_proxy app
+```
+
+Sind Flakes nicht eingeschaltet, `--extra-experimental-features 'nix-command flakes'` hinter `nix` setzen
+(`start.sh` macht das selbst). `nix run .` sieht nur Dateien, die Git kennt: neue Dateien erst mit `git add`
+hinzufügen.
 
 ## Starten
 
@@ -183,6 +206,11 @@ Andere Instanz: `EDU_KI_BASE=https://…`. Anderer Browser für den Chromium-Log
   ankommt, die ausgeführten Tools und die Fehler der App. Das Log enthält Prompts und Dateiinhalte, aber keine
   Sitzungsschlüssel, und ist darum nur auf Wunsch an.
 - **Port 8787 belegt** (App startet nicht): `fuser -k 8787/tcp`, dann neu starten.
+- **„GTK-Fenster nicht verfügbar“, Chromium-Fenster statt App-Fenster**: PyGObject, GTK 4, libadwaita oder
+  WebKitGTK 6 fehlen, Pakete siehe [Voraussetzungen](#voraussetzungen). Steht dort
+  `module 'gi' has no attribute 'require_version'`, gibt es zwar einen Ordner `gi` (in Klammern dahinter),
+  aber kein PyGObject, meist weil ein anderes Paket nur `gi/overrides/` mitbringt. Dann PyGObject installieren.
+  Prüfen: `.venv/bin/python -c "import gi; print(gi.__path__); gi.require_version('WebKit', '6.0')"`.
 - **Fenster bleibt leer / 403**: Die App akzeptiert nur Anfragen von `127.0.0.1:<Port>`. Nicht über eine andere
   Adresse oder einen Proxy aufrufen.
 - **Modell antwortet nicht mit Werkzeugen**: nicht alle Modelle können das. `qwen3.5-397b` und

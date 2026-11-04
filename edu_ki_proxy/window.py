@@ -13,12 +13,18 @@ import threading
 import time
 from urllib.parse import urlparse
 
-import gi
-
-gi.require_version("Gtk", "4.0")
-gi.require_version("Adw", "1")
-gi.require_version("WebKit", "6.0")
-from gi.repository import Adw, Gdk, GLib, Gtk, WebKit  # noqa: E402
+try:
+    import gi
+    gi.require_version("Gtk", "4.0")
+    gi.require_version("Adw", "1")
+    gi.require_version("WebKit", "6.0")
+    from gi.repository import Adw, Gdk, GLib, Gtk, WebKit
+except (ImportError, AttributeError, ValueError) as e:
+    # AttributeError: `gi` is only a folder without PyGObject (another package ships gi/overrides/...).
+    # ValueError: PyGObject is there, but GTK 4, libadwaita or WebKitGTK 6 is not.
+    # Re-raised as ImportError so the caller falls back to a Chromium window.
+    where = ", ".join(getattr(globals().get("gi"), "__path__", []))
+    raise ImportError(f"GTK-Fenster nicht verfügbar: {e}" + (f" (gi aus {where})" if where else "")) from e
 
 from . import auth, backends, providers  # noqa: E402
 
