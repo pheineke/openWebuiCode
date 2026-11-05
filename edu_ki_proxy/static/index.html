@@ -378,6 +378,19 @@ textarea{flex:1;resize:none;border:0;outline:0;background:transparent;font:inher
 .ccopy{position:absolute;top:6px;right:6px;background:color-mix(in srgb,var(--code) 70%,#888);color:var(--code-fg);opacity:0;transition:opacity .12s}
 .codeblock:hover .ccopy,.ccopy:focus-visible{opacity:.9}
 .ccopy.ok{opacity:1}
+/* information cards: the model's HTML/CSS in a sandboxed frame */
+@keyframes spin{to{transform:rotate(360deg)}}
+.icard{position:relative;margin:.7em 0}
+.icard iframe{display:block;width:100%;height:120px;border:0;background:transparent}   /* same color-scheme as the card inside, or the frame paints an opaque backdrop */
+.icard.wait{display:flex;align-items:center;gap:9px;padding:14px 16px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);font-size:13px}
+.icard.wait::before{content:"";width:14px;height:14px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--accent);animation:spin 1s linear infinite}
+.ictools{position:absolute;top:6px;right:6px;display:flex;gap:2px;padding:2px;border-radius:8px;background:color-mix(in srgb,var(--panel) 88%,transparent);border:1px solid var(--line);opacity:0;transition:opacity .12s;z-index:1}
+.icard:hover>.ictools,.ictools:focus-within{opacity:1}
+.ictools button{border:0;background:none;color:var(--muted);width:28px;height:26px;border-radius:6px;display:grid;place-items:center;padding:0;cursor:pointer}
+.ictools button:hover,.ictools button.on{color:var(--text);background:var(--side)}
+.ictools button.ok{color:var(--accent)}
+.ictools svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.icard .codeblock{margin-top:8px}
 .msg.user.editing{align-items:stretch}
 .msg textarea.edit{flex:none;width:100%;box-sizing:border-box;min-height:84px;max-height:50vh;border:1px solid var(--accent);border-radius:12px;background:var(--panel);padding:10px 12px;resize:vertical}
 .ebtns{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}
@@ -1252,7 +1265,8 @@ $("scont").onclick = e => {
   const m = e.target.closest("[data-mode]"), c = e.target.closest("[data-acc]");
   if (m) setAppearance({mode: m.dataset.mode}); else if (c) setAppearance({accent: c.dataset.acc});
 };
-window.onAppearance = () => {   // keep the terminal in step with the theme
+window.onAppearance = () => {   // keep the terminal and the cards in step with the theme
+  themeCards();
   if (typeof term !== "undefined" && term.t) term.t.options.theme = {background: getComputedStyle(document.documentElement).getPropertyValue("--code").trim(), foreground: "#e6edf3"};
 };
 
@@ -1339,7 +1353,7 @@ function newChat() {
   editId = null;
   const model = $("model").value || Object.keys(MODEL_META)[0] || "";
   chat = {id: null, title: "Neuer Chat", model, provider: modelProvider(model), source: modelIsOW(model) ? "openwebui" : "local",
-          conn: null, workdir: localStorage.workdir || null, perm: "ask", skills: [], webSearch: false, history: {messages: {}, currentId: null}, updated_at: 0};
+          conn: null, workdir: localStorage.workdir || null, perm: "ask", skills: [], webSearch: false, cards: cardPref(), history: {messages: {}, currentId: null}, updated_at: 0};
   resetPanel(); render(); loadList();
 }
 
@@ -1357,7 +1371,8 @@ async function openChat(id, provider, source) {
   if (!MODEL_META[model]) model = $("model").value;              // that model is gone: carry on with the selected one
   chat = {id, title: c.title || "Chat", conn: savedConn, workdir: h.conn && !savedConn ? null : (h.workdir || null), perm: "ask", model,
           provider: c.provider || provider || modelProvider(model), source: c.source || source || (modelIsOW(model) ? "openwebui" : "local"),
-          skills: Array.isArray(h.skills) ? h.skills : [], webSearch: !!h.webSearch, history: h.history || {messages: {}, currentId: null}, updated_at: c.updated_at, raw: h};
+          skills: Array.isArray(h.skills) ? h.skills : [], webSearch: !!h.webSearch, cards: h.cards === undefined ? cardPref() : !!h.cards,
+          history: h.history || {messages: {}, currentId: null}, updated_at: c.updated_at, raw: h};
   if ([...$("model").options].some(o => o.value === chat.model)) $("model").value = chat.model;
   addRecent(chat.workdir); resetPanel(); render();
   const known = list.find(x => x.id === id);
@@ -1378,8 +1393,9 @@ const mdCache = new Map(), MD_CACHE = 400;
 const mdOk = !!(window.marked && window.DOMPurify);
 if (mdOk) marked.use({gfm: true, breaks: true, renderer: {
   html({text}) { return esc(text); },
-  code({text, lang}) {
+  code({text, lang, raw}) {
     const l = (lang || "").trim().split(/\s+/)[0].toLowerCase();
+    if (l === "card" || l === "infocard") return cardSlot(text, /\n\s*(```|~~~)[`~]*\s*$/.test(raw || ""));
     let body = esc(text);
     if (window.hljs && l && hljs.getLanguage(l) && text.length < 200000) {
       try { body = hljs.highlight(text, {language: l, ignoreIllegals: true}).value; } catch {}
@@ -1387,15 +1403,119 @@ if (mdOk) marked.use({gfm: true, breaks: true, renderer: {
     return `<div class="codeblock"><button class="ccopy" type="button" title="Code kopieren">${COPY}</button><pre><code>${body}</code></pre></div>`;
   },
 }});
-function md(text) {
+let mdLive = false;                 // rendering text that is still streaming in
+function md(text, live = false) {
   if (!mdOk) return mdPlain(text);
-  let html = mdCache.get(text);
+  const key = live ? "\u0000" + text : text;
+  let html = mdCache.get(key);
   if (html === undefined) {
-    html = DOMPurify.sanitize(marked.parse(text), {FORBID_TAGS: ["style", "form", "iframe"], FORBID_ATTR: ["style"]});
-    mdCache.set(text, html);
+    mdLive = live;
+    try { html = DOMPurify.sanitize(marked.parse(text), {FORBID_TAGS: ["style", "form", "iframe"], FORBID_ATTR: ["style"]}); }
+    finally { mdLive = false; }
+    mdCache.set(key, html);
     if (mdCache.size > MD_CACHE) mdCache.delete(mdCache.keys().next().value);
   }
   return html;
+}
+
+// ---- information cards: a ```card block (HTML + CSS from the model) is shown as a card -----------
+// Each card is an iframe without scripts, forms or popups (sandbox), whose own policy loads nothing from
+// the network: model output cannot run code or send anything anywhere, not even through an image URL.
+// allow-same-origin only lets the app measure the frame, pass the theme in and open links in the browser.
+const CARD_ICON = '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M7.5 16v-3.5M12 16V9M16.5 16v-5.5"/></svg>';
+const CODE_ICON = '<svg viewBox="0 0 24 24"><path d="M8.5 8L4.5 12l4 4M15.5 8l4 4-4 4"/></svg>';
+const cardSrc = new Map(), cardHeights = new Map();   // card key -> its HTML, its last measured height
+const hashStr = t => { let h = 5381; for (let i = 0; i < t.length; i++) h = (Math.imul(h, 33) ^ t.charCodeAt(i)) >>> 0; return h.toString(36) + t.length.toString(36); };
+function cardSlot(src, closed) {
+  if (!closed && mdLive) return '<div class="icard wait">Infokarte wird erstellt …</div>';   // not complete yet
+  const key = "c" + hashStr(src);
+  cardSrc.set(key, src);
+  return `<div class="icard" data-card="${key}"><div class="ictools"><button type="button" data-ic="src" title="HTML anzeigen">${CODE_ICON}</button>`
+    + `<button type="button" data-ic="copy" title="HTML kopieren">${COPY}</button></div></div>`;
+}
+function cardTheme() {
+  const root = document.documentElement, cs = getComputedStyle(root), v = n => cs.getPropertyValue("--" + n).trim();
+  // !important: a card that defines these names itself still gets the app's colors, so it stays readable in both themes
+  const vars = ["bg", "panel", "side", "text", "muted", "line", "accent", "accent-fg", "danger", "code", "code-fg"].map(n => `--${n}:${v(n)} !important`).join(";");
+  return `:root{color-scheme:${root.dataset.theme === "light" ? "light" : "dark"};${vars};--font:${getComputedStyle(document.body).fontFamily} !important}`
+    + "html{overflow-x:auto;overflow-y:hidden}body{margin:0;display:flow-root;color:var(--text);background:transparent;font:14px/1.5 var(--font);overflow-wrap:break-word}"
+    + "img,svg{max-width:100%}a{color:var(--accent)}";
+}
+function cardDoc(src) {
+  const clean = DOMPurify.sanitize(src, {FORCE_BODY: true,
+    FORBID_TAGS: ["script", "iframe", "frame", "object", "embed", "portal", "form", "input", "button", "textarea", "select", "meta", "link", "base", "audio", "video", "source", "track"],
+    FORBID_ATTR: ["srcset", "action", "formaction", "ping", "target"]});
+  return '<!doctype html><html><head><meta charset="utf-8">'
+    + `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; form-action 'none'">`
+    + `<base target="_blank"><style id="theme">${cardTheme()}</style></head><body>${clean}</body></html>`;
+}
+function mountCards(root) {
+  for (const slot of root.querySelectorAll(".icard[data-card]:not(.on)")) {
+    const key = slot.dataset.card, src = cardSrc.get(key);
+    if (src == null) continue;
+    slot.classList.add("on");
+    const f = document.createElement("iframe");
+    f.setAttribute("sandbox", "allow-same-origin");
+    f.setAttribute("referrerpolicy", "no-referrer");
+    f.title = "Infokarte";
+    f.style.height = (cardHeights.get(key) || 120) + "px";     // known from before: no jump while it loads
+    f.addEventListener("load", () => cardLoaded(f, key));
+    f.srcdoc = cardDoc(src);
+    slot.appendChild(f);
+  }
+}
+function cardLoaded(f, key) {
+  const d = f.contentDocument; if (!d) return;
+  const fit = () => {
+    const h = Math.ceil(d.documentElement.getBoundingClientRect().height);
+    if (h > 0 && f.style.height !== h + "px") { f.style.height = h + "px"; cardHeights.set(key, h); }
+  };
+  fit();
+  try { new ResizeObserver(fit).observe(d.documentElement); } catch { addEventListener("resize", fit); }
+  d.addEventListener("click", e => {          // links open in the desktop's browser, like links in answers
+    const a = e.target.closest && e.target.closest("a[href]"); if (!a) return;
+    e.preventDefault();
+    if (/^(https?|mailto):/i.test(a.href) && !shellPost({open: a.href})) window.open(a.href, "_blank", "noopener");
+  });
+}
+function themeCards() {
+  const css = cardTheme();
+  for (const f of document.querySelectorAll(".icard iframe")) { const st = f.contentDocument && f.contentDocument.getElementById("theme"); if (st) st.textContent = css; }
+}
+async function cardTool(btn) {
+  const slot = btn.closest(".icard"), src = cardSrc.get(slot.dataset.card) || "";
+  if (btn.dataset.ic === "copy") { await copyText(src); return flash(btn); }
+  const open = slot.querySelector(".codeblock");
+  if (open) { open.remove(); btn.classList.remove("on"); return; }
+  let body = esc(src);
+  if (window.hljs) { try { body = hljs.highlight(src, {language: "xml", ignoreIllegals: true}).value; } catch {} }
+  slot.insertAdjacentHTML("beforeend", `<div class="codeblock"><button class="ccopy" type="button" title="Code kopieren">${COPY}</button><pre><code>${body}</code></pre></div>`);
+  btn.classList.add("on");
+}
+
+// Update an element to new HTML but keep the nodes that did not change: loaded cards stay loaded (an
+// iframe that is taken out of the page reloads), and selections and animations survive a streaming update.
+function morphHtml(el, html) {
+  const t = document.createElement("template");
+  t.innerHTML = html;
+  morphKids(el, t.content);
+}
+function morphKids(from, to) {
+  const news = [...to.childNodes];
+  news.forEach((n, i) => {
+    const o = from.childNodes[i];
+    if (!o) return void from.appendChild(n);
+    if (o.nodeType === 1 && n.nodeType === 1 && o.dataset.card && o.dataset.card === n.dataset.card) return;   // the same card: keep its frame
+    if (o.isEqualNode(n)) return;
+    if (o.nodeType === 3 && n.nodeType === 3) { o.data = n.data; return; }
+    if (o.nodeType === 1 && o.nodeName === n.nodeName && !o.matches(".icard")) {
+      for (const a of [...o.attributes]) if (!n.hasAttribute(a.name)) o.removeAttribute(a.name);
+      for (const a of [...n.attributes]) if (o.getAttribute(a.name) !== a.value) o.setAttribute(a.name, a.value);
+      return void morphKids(o, n);
+    }
+    from.replaceChild(n, o);
+  });
+  while (from.childNodes.length > news.length) from.lastChild.remove();
 }
 // Links in answers open in the browser: in the app window a click would take the window itself away from the app.
 $("log").addEventListener("click", e => {
@@ -1674,7 +1794,8 @@ function msgHtml(m) {
   let inner = steps.map((s, i) => {
     const k = `r${m.id}${i}`;
     const think = s.reasoning ? `<details class="think" data-k="${k}"${openSet.has(k) ? " open" : ""}><summary>Denkprozess</summary><div>${esc(s.reasoning)}</div></details>` : "";
-    return think + (s.content ? `<div class="body">${linkFiles(md(s.content))}</div>` : "") + (s.calls || []).map(callHtml).join("");
+    const live = m.done === false && i === steps.length - 1;       // still streaming: a card waits for its end
+    return think + (s.content ? `<div class="body">${linkFiles(md(s.content, live))}</div>` : "") + (s.calls || []).map(callHtml).join("");
   }).join("");
   inner += sourcesHtml(m);
   if (!m.done) inner += statusHtml(m);
@@ -1737,7 +1858,7 @@ function forkAt(m) {
   editId = null;
   chat = {id: null, title: `${old.title || "Chat"} – Abzweig`, model: old.model, provider: modelProvider(old.model),
           source: modelIsOW(old.model) ? "openwebui" : "local", conn: old.conn, workdir: old.workdir, perm: old.perm,
-          skills: [...(old.skills || [])], webSearch: !!old.webSearch, project: old.project || null, updated_at: 0,
+          skills: [...(old.skills || [])], webSearch: !!old.webSearch, cards: !!old.cards, project: old.project || null, updated_at: 0,
           history: {messages: Object.fromEntries(path.map(x => [x.id, x])), currentId: path.length ? path[path.length - 1].id : null}};
   if (m.role === "user") {
     $("input").value = m.content || ""; $("input").oninput();
@@ -1754,6 +1875,8 @@ function sendEdit() {
   send(text, old.attachments || [], old.parentId);           // a new version of the question, next to the old one
 }
 $("log").addEventListener("click", async e => {
+  const ic = e.target.closest(".ictools button");
+  if (ic) return cardTool(ic);
   const cc = e.target.closest(".ccopy");
   if (cc) { await copyText(cc.parentElement.querySelector("code").textContent); return flash(cc); }
   const ed = e.target.closest("[data-edit]");
@@ -1782,8 +1905,9 @@ function render() {
   const log = $("log"), stick = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
   const msgs = branch();
   document.querySelector("main").classList.toggle("newchat", !msgs.length);
-  log.innerHTML = msgs.length ? msgs.map(msgHtml).join("")
-    : `<div class="hello"><i>✳</i>Was steht an${userFirst ? ", " + esc(userFirst) : ""}?</div>${chat.workdir ? "" : `<div class="hint">Wähle unten einen Ordner${connOf(chat.conn) ? " auf " + esc(connOf(chat.conn).name) : ""}, damit ich Dateien lesen und ändern kann – oder chatte einfach los.</div>`}`;
+  morphHtml(log, msgs.length ? msgs.map(msgHtml).join("")
+    : `<div class="hello"><i>✳</i>Was steht an${userFirst ? ", " + esc(userFirst) : ""}?</div>${chat.workdir ? "" : `<div class="hint">Wähle unten einen Ordner${connOf(chat.conn) ? " auf " + esc(connOf(chat.conn).name) : ""}, damit ich Dateien lesen und ändern kann – oder chatte einfach los.</div>`}`);
+  mountCards(log);
   if (stick) log.scrollTop = log.scrollHeight;
   const eb = $("editBox");
   if (eb && document.activeElement !== eb) { eb.focus(); eb.setSelectionRange(eb.value.length, eb.value.length); }
@@ -2199,7 +2323,7 @@ const skillsSummary = () => { const n = (chat.skills || []).length; return n ? `
 function plusMenuHtml() {
   return `<div class="item" data-plus="file"><span class="mrow"><i class="mi">${CLIP}</i><span>Datei oder Bild anhängen`
     + `<small class="d">Auch per Ziehen ins Fenster oder Einfügen (Strg+V)</small></span></span></div>`
-    + webRowHtml()
+    + webRowHtml() + cardRowHtml()
     + `<div class="item has-fly" data-plus="skills"><span class="mrow"><i class="mi">${SPARK}</i><span>Skills<small class="d" id="skillSum">${skillsSummary()}</small></span></span>`
     + `<span class="chev">›</span><div class="fly" id="skillFly">${skillItemsHtml()}</div></div>`;
 }
@@ -2233,6 +2357,7 @@ $("plusMenu").onclick = e => {
   if (it.dataset.plus === "file") { $("plusMenu").classList.remove("on"); return pickFiles(); }
   if (it.dataset.plus === "skills") { it.classList.toggle("open"); return fitSkillFly(); }   // click (or hover) opens the submenu
   if (it.dataset.plus === "web") { if (!it.classList.contains("off")) toggleWebSearch(!chat.webSearch); return; }
+  if (it.dataset.plus === "cards") return toggleCards(it);
   const s = (skillList || []).find(x => skillKey(x) === it.dataset.skill); if (!s) return;
   const on = (chat.skills || []).some(x => skillKey(x) === skillKey(s));
   chat.skills = on ? chat.skills.filter(x => skillKey(x) !== skillKey(s)) : [...(chat.skills || []), {id: s.id, name: s.name, provider: s.provider}];
@@ -2312,6 +2437,32 @@ function sourcesHtml(m) {
     + (m.sources && m.sources.length ? `<div class="sources"><span>Quellen</span>${m.sources.map((x, i) =>
         `<a href="${esc(x.url)}" title="${esc(x.title || x.url)}">${i + 1} · ${esc(hostOf(x.url))}</a>`).join("")}</div>` : "");
 }
+// ---- information cards as a tool: the switch per chat (default: the last choice) and what the model is told ----
+const cardPref = () => { try { return localStorage.cards !== "0"; } catch { return true; } };
+function cardRowHtml() {
+  const on = !!(chat && chat.cards);
+  return `<div class="item" data-plus="cards"><span class="mrow"><i class="mi">${CARD_ICON}</i>`
+    + `<span>Infokarten<small class="d">Übersichten, Vergleiche und Diagramme als Karte im Chat</small></span></span>`
+    + `<span class="switch${on ? " on" : ""}" role="switch" aria-checked="${on}"></span></div>`;
+}
+function toggleCards(row) {
+  chat.cards = !chat.cards;
+  try { localStorage.cards = chat.cards ? "1" : "0"; } catch {}
+  const sw = row.querySelector(".switch"); sw.classList.toggle("on", chat.cards); sw.setAttribute("aria-checked", chat.cards);
+  if (chat.id) save().catch(() => {});
+}
+const CARDS_PROMPT = "You can show information cards in this chat. Write a fenced code block with the language tag `card` that "
+  + "contains an HTML fragment (no <html>, <head> or <body>) styled with a <style> element or style attributes. The app shows it "
+  + "in place as a visual card, as wide as the chat column (about 700 px, so keep the layout fluid) and as tall as its content. "
+  + "The card has no background or border of its own: style it yourself, for example as a rounded panel. Scripts do not run and "
+  + "nothing is loaded from the network, so draw charts, diagrams and icons with inline SVG or CSS and use images only as data: URIs. "
+  + "The app is in light or dark mode and passes its colors in as CSS variables: var(--text) for text, var(--muted) for secondary "
+  + "text, var(--accent) for highlights, var(--accent-fg) only for text on an var(--accent) background, var(--line) for borders, "
+  + "var(--panel) and var(--bg) for backgrounds, var(--danger) for warnings, and var(--font) for the font. Use them for all colors "
+  + "and do not define them yourself, so the card is readable in both modes. Use a card when a visual summary helps (overviews, comparisons, timelines, steps, key figures, "
+  + "simple charts), not for ordinary text answers. When the user asks for HTML code, give it as a normal ```html block instead. "
+  + "Keep explanations in normal text around the card.";
+
 function skillsPrompt() {
   const on = (chat.skills || []).filter(s => skillText.get(skillKey(s)));
   if (!on.length) return "";
@@ -2358,7 +2509,7 @@ function toOpenWebUI() {
   const msgs = chat.history.messages;
   const flat = Object.values(msgs).sort((a, b) => a.timestamp - b.timestamp);
   return {id: chat.id || "", title: chat.title, models: [modelName(chat.model)], params: {}, app_model: chat.model,
-          history: chat.history, workdir: chat.workdir, conn: chat.conn, skills: chat.skills || [], webSearch: !!chat.webSearch, project: chat.project || null, messages: flat, tags: [], files: [], timestamp: Date.now()};
+          history: chat.history, workdir: chat.workdir, conn: chat.conn, skills: chat.skills || [], webSearch: !!chat.webSearch, cards: !!chat.cards, project: chat.project || null, messages: flat, tags: [], files: [], timestamp: Date.now()};
 }
 async function save() {
   // A chat stays where it was first saved (Open WebUI or this computer), also when a model of another
@@ -2366,7 +2517,7 @@ async function save() {
   if (!chat.id) { chat.source = modelIsOW(chat.model) ? "openwebui" : "local"; chat.provider = modelProvider(chat.model); }
   if (chat.source !== "openwebui") {
     const r = await api("/app/chats", json("POST", {id: chat.id || "", title: chat.title, model: chat.model,
-      provider: chat.provider, history: chat.history, workdir: chat.workdir, conn: chat.conn, skills: chat.skills || [], webSearch: !!chat.webSearch,
+      provider: chat.provider, history: chat.history, workdir: chat.workdir, conn: chat.conn, skills: chat.skills || [], webSearch: !!chat.webSearch, cards: !!chat.cards,
       project: chat.project || null}));
     chat.id = r.id; chat.updated_at = r.updated_at;
     return;
@@ -2406,7 +2557,7 @@ Read a file before editing it; prefer edit_file for small changes. Verify your w
 Be concise. When finished, summarize what you changed. Answer in the user's language.`;
 
 function payload(upto) {
-  const sys = [chat.workdir ? sysPrompt() : "", skillsPrompt(), searchCtx.get(upto) || ""].filter(Boolean).join("\n\n");
+  const sys = [chat.workdir ? sysPrompt() : "", chat.cards ? CARDS_PROMPT : "", skillsPrompt(), searchCtx.get(upto) || ""].filter(Boolean).join("\n\n");
   const out = sys ? [{role: "system", content: sys}] : [];
   for (const m of branch()) {
     if (m.role === "user") out.push({role: "user", content: userContent(m)});

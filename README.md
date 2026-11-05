@@ -124,6 +124,11 @@ links → Abmelden (alle) oder **Strg+,** → **Anbieter** → Abmelden (einer).
   (z. B. EDU-KI, dort mit you.com) zur letzten Frage, das Modell bekommt die Treffer und zitiert sie mit [1], [2];
   die Quellen stehen unter der Antwort. Geht mit jedem Modell, braucht aber einen angemeldeten Open-WebUI-Anbieter
   mit Websuche. Beim ersten Einschalten zeigt die App den Datenschutzhinweis des Anbieters.
+- **Infokarten**: Unter **+** (standardmäßig an, die Wahl gilt pro Chat und als Vorgabe für neue). Das Modell kann
+  dann Übersichten, Vergleiche, Zeitleisten oder einfache Diagramme als Karte aus HTML und CSS zeigen; im Text ist
+  das ein Codeblock mit der Sprache `card`. Die Karte läuft abgeschottet: ohne JavaScript, ohne Formulare und ohne
+  Zugriff aufs Netz (auch Bilder und Schriften von außen werden blockiert), und sie übernimmt die Farben des Themes.
+  Oben rechts auf der Karte: HTML anzeigen und kopieren.
 - **Skills**: Unter **+** stehen die Skills aus Open WebUI (z. B. EDU-KI: Arbeitsbereich → Skills). Eingeschaltet
   gelten sie für den Chat (als Chip über dem Eingabefeld, × schaltet aus): Ihr Text geht als Anweisung an das
   Modell, auch an Ollama oder DeepSeek. Ein Klick auf den Chip zeigt den Text.
