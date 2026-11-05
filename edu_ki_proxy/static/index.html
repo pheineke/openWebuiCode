@@ -2226,7 +2226,7 @@ async function save() {
     const c = await api(OW + `v1/chats/${chat.id}` + q, json("POST", {chat: toOpenWebUI()}));
     chat.updated_at = c.updated_at;
   }
-  noteMeta(chat);
+  await noteMeta(chat);                     // before the caller reloads the list, so the chat shows in its project right away
 }
 function noteMeta(c) {                      // folder and project of an Open WebUI chat, for the projects (sent when they change)
   const k = [c.workdir || "", c.conn || "", c.project || ""].join("|");
