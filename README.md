@@ -81,17 +81,24 @@ hinzufügen.
 Argumente gehen an die App weiter, z. B. `./start.sh --debug` oder `./start.sh --port 8788`. Das Skript
 funktioniert auch über einen Symlink, etwa `ln -s "$PWD/start.sh" ~/.local/bin/edu-ki-code`.
 
-Beim ersten Start siehst du den Anmeldebildschirm mit allen eingerichteten Anbietern. **Anmelden** öffnet die
-Anmeldeseite des Anbieters; die App übernimmt danach die Sitzung, prüft sie beim Anbieter und springt zurück.
-Dein Passwort bekommt nur der Anbieter zu sehen.
+Beim ersten Start siehst du den Anmeldebildschirm mit allen eingerichteten Anbietern.
 
-- **Open WebUI** (Hochschul-Login) meldet sich im App-Fenster an. Der Knopf **Chromium** daneben nimmt
-  stattdessen ein Chromium-Fenster.
+- **Open WebUI hinter Shibboleth** (EDU-KI-RLP): Die App hat ein eigenes Anmeldeformular, ganz ohne Browser.
+  Du wählst deine Hochschule, gibst Benutzername und Passwort ein, und die App spielt den Shibboleth-Ablauf
+  selbst durch (Hochschule → SAML → Open WebUI). Benutzername und Passwort gehen nur an deine Hochschule; das
+  Passwort wird nicht gespeichert. Fragt die Hochschule zwischendurch etwas (Freigabe deiner Daten an den Dienst,
+  Nutzungsbedingungen, ein Einmalcode), zeigt die App diesen Schritt mit dem Text der Hochschule an und du
+  entscheidest. Die Liste der Hochschulen kommt vom EDU-KI-Portal. **Stattdessen auf der Webseite der Hochschule
+  anmelden** unter dem Formular nimmt den alten Weg über die Webseite im App-Fenster.
+- **Open WebUI ohne Shibboleth** meldet sich auf seiner Webseite im App-Fenster an. Der Knopf **Chromium**
+  daneben nimmt stattdessen ein Chromium-Fenster.
 - **DeepSeek** meldet sich immer in einem Chromium-Fenster an, weil Google und Apple ihre Anmeldung in
   eingebetteten Fenstern ablehnen. E-Mail/Telefon, Google und Apple funktionieren dort.
 
-Läuft eine Sitzung ab, versucht die App zuerst eine stille Neuanmeldung mit dem gespeicherten Browserprofil.
-Klappt das nicht, steht der Anbieter als „Sitzung abgelaufen“ im Anmeldebildschirm. Abmelden: Profil unten
+Läuft eine Sitzung ab, meldet die App dich still neu an: nach einer Hochschul-Anmeldung über deine noch gültige
+Sitzung bei der Hochschule (ohne Passwort, solange die Hochschule dich kennt, meist einige Stunden), sonst mit
+dem gespeicherten Browserprofil. Klappt das nicht, steht der Anbieter als „Sitzung abgelaufen“ im
+Anmeldebildschirm; Hochschule und Benutzername sind dann schon eingetragen. Abmelden: Profil unten
 links → Abmelden (alle) oder **Strg+,** → **Anbieter** → Abmelden (einer). Weitere Anbieter hinzufügen:
 **Strg+,** → **Anbieter**.
 
@@ -135,7 +142,8 @@ links → Abmelden (alle) oder **Strg+,** → **Anbieter** → Abmelden (einer).
 
 Unter **Einstellungen → Anbieter** kannst du weitere Dienste hinzufügen:
 
-- **Open WebUI:** Basis-URL der Instanz, Anmeldung im App-Fenster (Shibboleth oder normaler Login).
+- **Open WebUI:** Basis-URL der Instanz. Mit Shibboleth davor meldest du dich im eigenen Formular der App an,
+  sonst auf der Webseite im App-Fenster.
 - **DeepSeek (Web):** keine Basis-URL nötig; Anmeldung bei `chat.deepseek.com` im Chromium-Fenster.
   Chatverläufe werden lokal gespeichert, Open-WebUI-Chats bleiben in Open WebUI. Die Seitenleiste zeigt beide
   zusammen. DeepSeek hat keine offizielle Schnittstelle für das Web-Abo; die App spricht die internen Endpunkte
@@ -220,13 +228,15 @@ opencode -m proxy/deepseek/deepseek-reasoner
 Die Modell-ID im Proxy ist `<anbieter-id>/<modell>`; im opencode-Config ist der Schlüssel unter `models`
 genau diese ID, der Provider-Name davor (`proxy`) ist frei wählbar. `python -m edu_ki_proxy models` zeigt alle
 IDs. Weitere Befehle:
-`login [--provider ID]` (Anmeldung im Chromium-Fenster), `providers` (konfigurierte Anbieter),
+`login [--provider ID]` (Hochschul-Anmeldung im Terminal; andere Anbieter oder mit `--browser` im
+Chromium-Fenster), `providers` (konfigurierte Anbieter),
 `tooltest <modell>` (prüft, ob ein Modell Werkzeugaufrufe kann).
 
 ## Wo liegen meine Daten?
 
 `~/.config/edu-ki-proxy/` (anderer Ort: Umgebungsvariable `EDU_KI_HOME`). Dort liegen die Anbieter und
-Sitzungen (`providers.json`, nur für dich lesbar), lokale Chats (`chats/`), die Browserprofile für den
+Sitzungen (`providers.json`, nur für dich lesbar; bei Hochschul-Anmeldung auch die Cookies der Hochschule für die
+stille Neuanmeldung, nie das Passwort), lokale Chats (`chats/`), die Browserprofile für den
 Chromium-Login (`browser-profile-<id>/`), die Fenster-Daten mit Einstellungen und das Nutzungsprotokoll.
 `state.json` stammt von älteren Versionen und wird nur beim ersten Start übernommen.
 Anmeldedaten löschen: in der App abmelden (entfernt auch die Cookies und gespeicherten Sitzungen der Anbieter

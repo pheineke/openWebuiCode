@@ -89,12 +89,16 @@ class Backend:
             if token(cur) != stale and self.logged_in(cur):
                 return cur            # another request already refreshed
             try:
-                state = await asyncio.to_thread(auth.silent_refresh, cur, self)
+                state = await self.silent_login(cur)
             except Exception as e:
                 providers.mark_expired(pid)
                 raise ProxyError(f"{cur.get('name') or pid}: Sitzung abgelaufen, bitte erneut anmelden.", 401) from e
             providers.set_session(pid, state)
             return providers.get(pid) or cur
+
+    async def silent_login(self, p: dict) -> dict:
+        """A fresh session without asking the person; raises when that is not possible."""
+        return await asyncio.to_thread(auth.silent_refresh, p, self)
 
     # ---- API ----------------------------------------------------------------------------------
     async def models(self, p: dict) -> list[tuple[str, str]]:

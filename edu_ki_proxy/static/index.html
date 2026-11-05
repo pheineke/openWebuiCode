@@ -186,6 +186,33 @@ details.think div{white-space:pre-wrap;border-left:2px solid var(--line);padding
 #login p{color:var(--muted);margin:6px 0 20px}
 #login button{border:0;background:var(--accent);color:var(--accent-fg);padding:11px 22px;border-radius:10px;font-weight:600}
 #login button:disabled{opacity:.6;cursor:wait}
+/* Shibboleth login in the app's own form, and the university's further steps (consent, codes) */
+.shib{display:flex;flex-direction:column;gap:12px;text-align:left;width:min(400px,calc(100vw - 96px))}
+.shib[hidden],.shib [hidden]{display:none}
+#shibForm{align-items:stretch;flex-wrap:nowrap;background:none;border:0;border-radius:0;padding:0}   /* not the composer's form look */
+.shead{display:flex;align-items:center;gap:6px;margin-bottom:2px}
+#login .shead h1{margin:0;font-size:21px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#login .shead .back{background:transparent;color:var(--muted);padding:2px 9px 4px;margin-left:-10px;border-radius:8px;font-size:22px;line-height:1;font-weight:400}
+#login .shead .back:hover{color:var(--text);background:var(--side)}
+#login .shib p{margin:0;font-size:13px;line-height:1.45}
+.shib label{display:flex;flex-direction:column;gap:5px;font-weight:550;font-size:13px}
+.shib input:not([type=radio]):not([type=checkbox]),.shib select{font:inherit;font-size:14px;font-weight:400;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 11px}
+.shib select{appearance:none;-webkit-appearance:none;padding-right:30px;cursor:pointer;background-repeat:no-repeat;background-size:5px 5px;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 16px) 55%,calc(100% - 11px) 55%}
+.shib input:focus,.shib select:focus{outline:none;border-color:var(--accent)}
+.shib .opt{flex-direction:row;align-items:flex-start;gap:9px;font-weight:400;font-size:13px;cursor:pointer}
+.shib .opt input{margin:2px 0 0;accent-color:var(--accent)}
+.shib .sgroup{display:flex;flex-direction:column;gap:8px}
+#login .shib .smsg{color:var(--danger)}
+#login .shib .smsg:empty{display:none}
+.shib .stable{border-collapse:collapse;font-size:13px;width:100%}
+.shib .stable th{text-align:left;font-weight:600;padding:0 0 6px}
+.shib .stable td{border-top:1px solid var(--line);padding:6px 8px 6px 0;vertical-align:top;overflow-wrap:anywhere}
+.shib .stable td:first-child{color:var(--muted);white-space:nowrap;width:1%}
+.shib .btnrow{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:4px}
+#login .shib button.sec{background:transparent;color:var(--text);border:1px solid var(--line);font-weight:500}
+#login .shib button.sec:hover{border-color:var(--accent)}
+#login .shib .alt{font-size:12px;color:var(--muted);text-align:center}
+#login .shib .alt a{color:var(--muted)}
 .call{margin:6px 0;border:1px solid var(--line);border-radius:10px;background:var(--panel);font-size:13px}
 .call>summary{padding:6px 10px;cursor:pointer;display:flex;gap:8px;align-items:center;list-style:none}
 .call>summary::-webkit-details-marker{display:none}
@@ -582,11 +609,25 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
   <div class="prow"><button id="pNew">Neuer Ordner</button><span style="flex:1"></span><button id="pNone">Ohne Ordner</button><button id="pCancel">Abbrechen</button><button class="ok" id="pOk">Diesen Ordner wählen</button></div>
 </div></div>
 <div id="login"><div class="card" style="max-width:520px">
+  <div id="loginList">
   <h1>Anmelden</h1>
-  <p>Wähle einen Anbieter. Die Anmeldung läuft im Browser; Zugangsdaten gehen nur an den Anbieter.</p>
+  <p>Wähle einen Anbieter. Zugangsdaten gehen nur an den Anbieter, bei Hochschulen nur an deine Hochschule.</p>
   <div id="loginProviders" style="display:flex;flex-direction:column;gap:8px;text-align:left"></div>
   <p id="loginMsg" style="margin-top:14px;font-size:13px"></p>
   <p style="font-size:12px;margin:14px 0 0"><a href="#" id="loginSettings" style="color:var(--muted)">Anbieter verwalten</a></p>
+  </div>
+  <form id="shibForm" class="shib" hidden>
+    <div class="shead"><button type="button" class="back" id="shibBack" title="Zurück zu den Anbietern">‹</button><h1 id="shibTitle">Anmelden</h1></div>
+    <p class="umuted" style="margin:0">Mit deinem Hochschul-Account. Benutzername und Passwort gehen nur an deine Hochschule, die App speichert das Passwort nicht.</p>
+    <label>Hochschule<select id="shibIdp"></select></label>
+    <label id="shibOtherRow" hidden>entityID des Identity Providers<input id="shibOther" spellcheck="false" autocapitalize="off" placeholder="https://…/idp/shibboleth"></label>
+    <label>Benutzername<input id="shibUser" autocomplete="username" spellcheck="false" autocapitalize="off"></label>
+    <label>Passwort<input id="shibPass" type="password" autocomplete="current-password"></label>
+    <p class="smsg" id="shibMsg"></p>
+    <button type="submit" id="shibGo">Anmelden</button>
+    <p class="alt"><a href="#" id="shibWeb">Stattdessen auf der Webseite der Hochschule anmelden</a></p>
+  </form>
+  <div id="shibAsk" class="shib" hidden></div>
 </div></div>
 
 <script>
@@ -648,7 +689,15 @@ const shellPost = o => { try { window.webkit.messageHandlers.shell.postMessage(J
 let loginProviders = [], providerTypes = {};
 const inShell = () => document.documentElement.classList.contains("shell");
 const providerState = p => p.logged_in ? " · angemeldet" : p.expired ? " · Sitzung abgelaufen" : "";
-function showLogin(msg = "") { $("login").classList.add("on"); $("loginMsg").textContent = msg; renderLoginProviders(); }
+function showLogin(msg = "") {
+  const was = $("login").classList.contains("on");
+  $("login").classList.add("on"); $("loginMsg").textContent = msg;
+  if (!was || !shib) { shib = null; loginView("list"); }        // an open university form stays as it is
+  renderLoginProviders().then(() => {
+    const can = loginProviders.filter(p => p.login);
+    if (!shib && can.length === 1 && can[0].type === "openwebui" && !$("loginList").hidden) shibOpen(can[0]);   // only one: straight to its form
+  });
+}
 async function fetchProviders() {
   const d = await (await fetch("/app/providers")).json();
   providerTypes = d.types || {};
@@ -670,9 +719,111 @@ async function renderLoginProviders() {
 }
 // "window" providers log in inside the app window; "browser" ones (Google/Apple sign-in) in Chromium
 const windowLogin = pid => (loginProviders.find(p => p.id === pid) || {}).login === "window" && shellPost({login: true, provider: pid});
-function loginProvider(pid) {
+async function loginProvider(pid) {
+  const p = loginProviders.find(x => x.id === pid) || {id: pid};
+  if (p.type === "openwebui" && await shibOpen(p)) return;      // university login in our own form
   if (windowLogin(pid)) { $("loginMsg").textContent = "Die Anmeldung läuft im Fenster …"; return; }
   chromiumLogin(pid);
+}
+// ---- Shibboleth (Open WebUI behind a university login): our own form, no browser --------------
+let shib = null;           // {pid, name} while the form or a further step is open
+function loginView(which) {        // "list" (providers), "form" (university login), "ask" (a further step)
+  $("loginList").hidden = which !== "list"; $("shibForm").hidden = which !== "form"; $("shibAsk").hidden = which !== "ask";
+}
+const shibMsg = t => { $("shibMsg").textContent = t || ""; };
+async function shibOpen(p) {
+  let info = null;
+  try { info = await api(`/app/providers/${encodeURIComponent(p.id)}/shib`); } catch {}
+  if (!info || !info.available) return false;
+  shib = {pid: p.id, name: p.name};
+  $("shibTitle").textContent = p.name || "Anmelden";
+  const last = info.last || {}, groups = {};
+  for (const i of info.idps) (groups[i.group || ""] ||= []).push(i);
+  const note = s => s === "test" ? " (im Test)" : s === "aus" ? " (nicht angebunden)" : "";
+  const known = info.idps.some(i => i.entity_id === last.entity_id), other = !info.idps.length || (last.entity_id && !known);
+  $("shibIdp").innerHTML = `<option value="" disabled ${last.entity_id || other ? "" : "selected"}>Hochschule auswählen …</option>` +
+    Object.entries(groups).map(([g, items]) => {
+      const opts = items.map(i => `<option value="${esc(i.entity_id)}" ${i.entity_id === last.entity_id ? "selected" : ""}>${esc(i.name + note(i.status))}</option>`).join("");
+      return g ? `<optgroup label="${esc(g)}">${opts}</optgroup>` : opts;
+    }).join("") + `<option value="__other" ${other ? "selected" : ""}>Andere Hochschule (entityID) …</option>`;
+  $("shibOther").value = other ? last.entity_id || "" : "";
+  $("shibOtherRow").hidden = $("shibIdp").value !== "__other";
+  $("shibUser").value = last.username || ""; $("shibPass").value = ""; shibMsg("");
+  loginView("form");
+  ($("shibIdp").value ? ($("shibUser").value ? $("shibPass") : $("shibUser")) : $("shibIdp")).focus();
+  return true;
+}
+function shibClose() {
+  if (shib && !$("shibAsk").hidden) fetch(`/app/providers/${encodeURIComponent(shib.pid)}/shib`, {method: "DELETE"}).catch(() => {});
+  shib = null; $("shibPass").value = ""; loginView("list");
+}
+function shibBusy(on, btn = $("shibGo"), text = "Anmelden …") {
+  for (const b of document.querySelectorAll("#shibForm button, #shibAsk button")) b.disabled = on;
+  if (on) { btn.dataset.label = btn.textContent; btn.textContent = text; } else if (btn.dataset.label) btn.textContent = btn.dataset.label;
+}
+async function shibResult(r) {
+  if (r.ask) return shibAsk(r.ask);
+  shib = null; $("shibPass").value = ""; loginView("list");
+  $("login").classList.remove("on");
+  await boot();
+  if ($("settings").classList.contains("on")) renderProviders();
+}
+function shibFailed(e) {
+  $("shibPass").value = ""; loginView("form"); shibMsg(errMsg(e));
+  ($("shibUser").value ? $("shibPass") : $("shibUser")).focus();
+}
+$("shibIdp").onchange = () => { $("shibOtherRow").hidden = $("shibIdp").value !== "__other"; if (!$("shibOtherRow").hidden) $("shibOther").focus(); };
+$("shibBack").onclick = shibClose;
+$("shibWeb").onclick = e => { e.preventDefault(); const pid = shib && shib.pid; shibClose(); if (pid && !windowLogin(pid)) chromiumLogin(pid); else if (pid) $("loginMsg").textContent = "Die Anmeldung läuft im Fenster …"; };
+$("shibForm").onsubmit = async e => {
+  e.preventDefault();
+  if (!shib) return;
+  const sel = $("shibIdp").value, entity = sel === "__other" ? $("shibOther").value.trim() : sel;
+  if (!entity) { shibMsg("Bitte wähle deine Hochschule aus."); return (sel === "__other" ? $("shibOther") : $("shibIdp")).focus(); }
+  if (!$("shibUser").value.trim()) { shibMsg("Bitte gib deinen Benutzernamen ein."); return $("shibUser").focus(); }
+  if (!$("shibPass").value) { shibMsg("Bitte gib dein Passwort ein."); return $("shibPass").focus(); }
+  shibMsg(""); shibBusy(true);
+  try {
+    await shibResult(await api(`/app/providers/${encodeURIComponent(shib.pid)}/shib`,
+      json("POST", {entity_id: entity, username: $("shibUser").value.trim(), password: $("shibPass").value})));
+  } catch (err) { shibFailed(err); }
+  finally { shibBusy(false); }
+};
+// A step of the university between password and service (data release, terms, a one-time code):
+// drawn from the page's own text and fields, answered by the person, never by the app.
+function shibAsk(a) {
+  const field = f => f.type === "radio"
+      ? `<div class="sgroup">${f.options.map(o => `<label class="opt"><input type="radio" name="${esc(f.name)}" value="${esc(o.value)}" ${o.checked ? "checked" : ""}><span>${esc(o.label)}</span></label>`).join("")}</div>`
+    : f.type === "checkbox"
+      ? `<label class="opt"><input type="checkbox" name="${esc(f.name)}" ${f.checked ? "checked" : ""}><span>${esc(f.label)}</span></label>`
+      : `<label>${esc(f.label)}<input name="${esc(f.name)}" type="${f.type === "password" ? "password" : "text"}" value="${esc(f.value || "")}"
+           autocomplete="${f.type === "password" ? "current-password" : "one-time-code"}" spellcheck="false" autocapitalize="off"></label>`;
+  const table = rows => `<table class="stable">${rows.map(r => r.length === 1 ? `<tr><th colspan="2">${esc(r[0])}</th></tr>`
+      : `<tr><td>${esc(r[0])}</td><td>${esc(r.slice(1).join(" · "))}</td></tr>`).join("")}</table>`;
+  const main = b => b.name === "_eventId_proceed" || a.buttons.length === 1;
+  const box = $("shibAsk");
+  box.innerHTML = `<div class="shead"><h1>${esc(a.title || "Weiterer Schritt")}</h1></div>
+    <p class="umuted" style="margin:0">Deine Hochschule${a.host ? ` (${esc(a.host)})` : ""} fragt das, bevor sie dich zu ${esc(shib.name || "dem Dienst")} weiterleitet.</p>
+    ${a.error ? `<p class="smsg">${esc(a.error)}</p>` : ""}
+    ${a.items.map(i => i.kind === "text" ? `<p>${esc(i.text)}</p>` : i.kind === "table" ? table(i.rows) : field(i)).join("")}
+    <p class="smsg" id="shibAskMsg"></p>
+    <div class="btnrow"><button type="button" class="sec" data-cancel>Abbrechen</button>
+      ${a.buttons.map(b => `<button type="button" data-btn="${esc(b.name)}" class="${main(b) ? "" : "sec"}">${esc(b.label)}</button>`).join("")}</div>`;
+  loginView("ask");
+  box.querySelector("[data-cancel]").onclick = () => { const p = shib; shibClose(); if (p) shibOpen({id: p.pid, name: p.name}); };
+  box.querySelectorAll("[data-btn]").forEach(b => b.onclick = async () => {
+    const values = {};
+    for (const el of box.querySelectorAll("input[name]")) {
+      if (el.type === "radio") { if (el.checked) values[el.name] = el.value; }
+      else if (el.type === "checkbox") values[el.name] = el.checked;
+      else values[el.name] = el.value;
+    }
+    shibBusy(true, b, "Einen Moment …");
+    try { await shibResult(await api(`/app/providers/${encodeURIComponent(shib.pid)}/shib/answer`, json("POST", {button: b.dataset.btn || null, values}))); }
+    catch (err) { shibFailed(err); }
+    finally { shibBusy(false, b); }
+  });
+  (box.querySelector("input:not([type=radio]):not([type=checkbox])") || box.querySelector(".btnrow button:last-child")).focus();
 }
 async function chromiumLogin(pid) {
   $("loginMsg").textContent = "Browserfenster geöffnet – bitte dort anmelden…";
@@ -1029,6 +1180,8 @@ async function renderProviders() {
 async function providerAction(act, pid, name = "") {
   try {
     if (act === "login") {
+      const p = (loginProviders || []).find(x => x.id === pid);
+      if (p && p.type === "openwebui") { closeSettings(); showLogin(); if (await shibOpen(p)) return; loginView("list"); }
       if (windowLogin(pid)) { closeSettings(); return; }
       await api(`/app/providers/${encodeURIComponent(pid)}/login`, {method: "POST"});
       await boot(); renderProviders();

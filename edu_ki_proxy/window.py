@@ -3,9 +3,10 @@
 The page fills the whole window. Only the window buttons (top right) and an invisible drag
 strip are overlaid, so the page's own layout (sidebar divider, panels) runs edge to edge.
 
-Login happens in this same window: it loads the university's Shibboleth login, and once Open WebUI
-is reached it reads the session (cookies + token) out of WebKit and hands it to the proxy, so no
-second browser window is needed.
+Open WebUI behind Shibboleth logs in through the page's own form (shibboleth.py, no browser).  The
+website login stays as a fallback and runs in this same window: it loads the provider's login, and
+once Open WebUI is reached it reads the session (cookies + token) out of WebKit and hands it to the
+proxy, so no second browser window is needed.
 """
 import json
 import os

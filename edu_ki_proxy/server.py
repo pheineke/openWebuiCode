@@ -27,7 +27,7 @@ from fastapi.staticfiles import StaticFiles
 
 from pydantic import BaseModel
 
-from . import auth, backends, chats, extract, providers, remote, tools, trace, usage
+from . import auth, backends, chats, extract, providers, remote, shibboleth, tools, trace, usage
 from .backends import ProxyError, emulate
 
 
@@ -40,6 +40,7 @@ async def lifespan(_app):
 app = FastAPI(lifespan=lifespan)
 PORT = 8787
 _login_tasks: dict[str, asyncio.Task] = {}
+_shib_flows: dict[str, shibboleth.Flow] = {}    # provider id -> login waiting for the person's next step
 
 
 @app.exception_handler(ProxyError)
@@ -353,6 +354,84 @@ async def provider_login(pid: str):
         return JSONResponse({"error": {"message": str(e)}}, status_code=500)
     providers.set_session(pid, state)
     return {"logged_in": True, "provider": providers.public(providers.get(pid) or p)}
+
+
+# ---- Shibboleth login in the app's own form (no browser) ----------------------------------------
+def _shib_provider(pid: str) -> dict:
+    p = _provider(pid)
+    if p.get("type") != "openwebui":
+        raise ProxyError("Die Hochschul-Anmeldung gibt es nur für Open WebUI.", 400)
+    return p
+
+
+@app.get("/app/providers/{pid}/shib")
+async def shib_info(pid: str):
+    """Can this provider log in through our own form, with which universities, and the last choice."""
+    p = _shib_provider(pid)
+    return {**await shibboleth.info(p["base_url"]), "last": p.get("shib") or {}}
+
+
+class ShibStart(BaseModel):
+    entity_id: str
+    username: str
+    password: str
+
+
+class ShibAnswer(BaseModel):
+    button: str | None = None
+    values: dict = {}
+
+
+async def _shib_step(pid: str, flow: shibboleth.Flow, step) -> dict:
+    try:
+        result = await step
+    except shibboleth.ShibError as e:
+        _shib_flows.pop(pid, None)
+        await flow.close()
+        return JSONResponse({"error": {"message": str(e), "kind": type(e).__name__}}, status_code=400)
+    except Exception as e:
+        _shib_flows.pop(pid, None)
+        await flow.close()
+        trace.log("shib", error=repr(e))
+        return JSONResponse({"error": {"message": f"Anmeldung fehlgeschlagen: {e}"}}, status_code=502)
+    if "ask" in result:
+        _shib_flows[pid] = flow
+        return {"ask": result["ask"]}
+    _shib_flows.pop(pid, None)
+    await flow.close()
+    state = result["done"]
+    providers.set_session(pid, state)
+    providers.update(pid, shib={"entity_id": flow.entity_id, "username": flow.username})
+    return {"logged_in": True, "provider": providers.public(providers.get(pid))}
+
+
+@app.post("/app/providers/{pid}/shib")
+async def shib_login(pid: str, body: ShibStart):
+    p = _shib_provider(pid)
+    if not body.entity_id.strip() or not body.username.strip() or not body.password:
+        raise ProxyError("Bitte Hochschule, Benutzername und Passwort angeben.", 400)
+    if old := _shib_flows.pop(pid, None):
+        await old.close()
+    # the university's session from earlier logins is reused (it may skip consent pages)
+    keep = ((p.get("session") or {}).get("shib") or {})
+    cookies = keep.get("cookies") if keep.get("entity_id") == body.entity_id.strip() else None
+    flow = shibboleth.Flow(p["base_url"], body.entity_id.strip(), body.username.strip(), body.password, cookies)
+    return await _shib_step(pid, flow, flow.start())
+
+
+@app.post("/app/providers/{pid}/shib/answer")
+async def shib_answer(pid: str, body: ShibAnswer):
+    flow = _shib_flows.get(pid)
+    if not flow or time.time() - flow.started > 900:
+        raise ProxyError("Dieser Anmeldeschritt ist abgelaufen. Bitte noch einmal anmelden.", 400)
+    return await _shib_step(pid, flow, flow.answer(body.button, body.values))
+
+
+@app.delete("/app/providers/{pid}/shib")
+async def shib_cancel(pid: str):
+    if flow := _shib_flows.pop(pid, None):
+        await flow.close()
+    return {"ok": True}
 
 
 @app.post("/app/providers/{pid}/logout")

@@ -13,7 +13,7 @@ import httpx
 from fastapi import Request
 from fastapi.responses import StreamingResponse
 
-from .. import auth, usage
+from .. import auth, shibboleth, usage
 from .base import Backend, ProxyError, relay, token
 
 HOP = {"host", "content-length", "connection", "keep-alive", "transfer-encoding", "upgrade",
@@ -42,6 +42,14 @@ class OpenWebUI(Backend):
     def _client(self, p: dict) -> httpx.AsyncClient:
         return httpx.AsyncClient(base_url=(p.get("base_url") or "").rstrip("/"),
                                  timeout=httpx.Timeout(600, connect=20), follow_redirects=False)
+
+    async def silent_login(self, p: dict) -> dict:
+        """Logged in with the app's own form: the university's session still knows the person, so a
+        new Shibboleth round needs no password.  Otherwise the browser profile, as before."""
+        shib = (p.get("session") or {}).get("shib")
+        if shib and shib.get("entity_id"):
+            return await shibboleth.refresh(p["base_url"], shib)
+        return await super().silent_login(p)
 
     def check_session(self, p: dict, state: dict) -> bool:
         try:
