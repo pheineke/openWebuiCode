@@ -210,6 +210,10 @@ def build_window(app: Adw.Application, url: str):
             refresh_handles()
         if "bg" in msg:
             chrome(str(msg.get("bg", "")), str(msg.get("mode", "auto")))
+        if "open" in msg:          # a link in an answer: the desktop's browser, never this window
+            uri = str(msg.get("open") or "")
+            if re.match(r"(?i)(https?|mailto):", uri):
+                Gtk.UriLauncher.new(uri).launch(win, None, None, None)
         if "pickdir" in msg:       # the chat's working folder: second choice for the file dialog's start
             picker["chat"] = str(msg.get("pickdir") or "") or None
 

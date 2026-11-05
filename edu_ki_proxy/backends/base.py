@@ -116,6 +116,14 @@ class Backend:
         """A skill's instructions."""
         raise ProxyError("Skill nicht gefunden.", 404)
 
+    async def web_search_info(self, p: dict) -> dict | None:
+        """{"notice": text the user should confirm, or ""} if the service can search the web, else None."""
+        return None
+
+    async def web_search(self, p: dict, messages: list[dict], model: str | None) -> dict:
+        """{"queries": [...], "results": [{"title", "url", "content"}]} for the conversation's last question."""
+        raise ProxyError("Dieser Anbieter kann nicht im Web suchen.", 400)
+
     async def model_icon(self, p: dict, model: str) -> tuple[bytes, str] | None:
         """(image bytes, content type) of a model's picture, if the service has one."""
         return None

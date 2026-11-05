@@ -40,6 +40,8 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if
 </script>
 <link rel="stylesheet" href="/vendor/xterm.css">
 <script src="/vendor/highlight.min.js"></script>
+<script src="/vendor/marked.min.js"></script>
+<script src="/vendor/purify.min.js"></script>
 <script src="/vendor/xterm.js"></script>
 <script src="/vendor/xterm-addon-fit.js"></script>
 <style>
@@ -61,6 +63,25 @@ html.sb-collapsed #topbar{padding-left:10px}
 .new{margin:0 12px 10px;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--panel);text-align:left;font-weight:550}
 .new:hover{border-color:var(--accent)}
 #chats{flex:1;overflow:auto;padding:0 8px}
+.newrow{display:flex;gap:8px;margin:0 12px 10px}
+.newrow .new{margin:0;flex:1;min-width:0}
+.newrow .projbtn{flex:none;display:inline-flex;align-items:center;gap:7px;cursor:pointer}
+.newrow .projbtn.on{border-color:var(--accent);color:var(--accent)}
+.projbtn svg,.chat .pico svg,.sideback svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;display:block}
+/* projects: the sidebar lists working folders, then one folder's chats */
+.sidehead{display:flex;align-items:center;gap:6px;padding:6px 4px 8px}
+.sidehead>span{display:flex;flex-direction:column;min-width:0}
+.sidehead b{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sidehead small{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sideback{border:0;background:none;color:var(--muted);width:26px;height:26px;border-radius:6px;display:grid;place-items:center;padding:0;flex:none;cursor:pointer}
+.sideback:hover{background:var(--panel);color:var(--text)}
+.chat.proj{gap:9px}
+.chat .pico{display:grid;place-items:center;color:var(--muted);flex:none}
+.chat.proj small.d{display:block;margin:1px 0 0;overflow:hidden;text-overflow:ellipsis}
+.chat .cnt{font-size:11px;color:var(--muted);background:var(--side);border-radius:999px;padding:1px 7px;flex:none}
+.projnew{display:block;width:calc(100% - 4px);margin:0 2px 8px;padding:7px 10px;border:1px dashed var(--line);border-radius:8px;background:none;color:var(--muted);text-align:left;cursor:pointer;font:inherit;font-size:13px}
+.projnew:hover{color:var(--text);border-color:var(--accent)}
+.sidenote{padding:8px 10px;color:var(--muted);font-size:12.5px;line-height:1.45}
 .chat{display:flex;align-items:center;gap:4px;padding:7px 10px;border-radius:8px;cursor:pointer;color:var(--muted)}
 .chat span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chat:hover{background:var(--panel)}
@@ -137,6 +158,23 @@ main{flex:1;display:flex;flex-direction:column;min-width:0}
 .body pre{background:var(--code);color:var(--code-fg);padding:12px;border-radius:10px;overflow:auto;font:13px/1.45 ui-monospace,Menlo,Consolas,monospace}
 .body code{font:13px ui-monospace,Menlo,Consolas,monospace;background:var(--side);padding:1px 5px;border-radius:5px}
 .body pre code{background:none;padding:0}
+/* markdown in answers */
+.body h1,.body h2,.body h3,.body h4,.body h5,.body h6{margin:1em 0 .4em;line-height:1.3;font-weight:650}
+.body h1{font-size:1.35em}.body h2{font-size:1.2em}.body h3{font-size:1.07em}.body h4,.body h5,.body h6{font-size:1em}
+.body>:first-child{margin-top:0}
+.body ul,.body ol{margin:.4em 0;padding-left:1.6em}
+.body li{margin:.2em 0}
+.body li>p{margin:.15em 0}
+.body li:has(>input[type=checkbox]){list-style:none;margin-left:-1.3em}
+.body blockquote{margin:.6em 0;padding:.1em 0 .1em 12px;border-left:3px solid var(--line);color:var(--muted)}
+.body hr{border:0;border-top:1px solid var(--line);margin:1em 0}
+.body a{color:var(--accent);text-decoration:underline;text-underline-offset:2px}
+.body table{border-collapse:collapse;margin:.6em 0;display:block;overflow-x:auto;max-width:100%}
+.body th,.body td{border:1px solid var(--line);padding:5px 10px;text-align:left;vertical-align:top}
+.body th{background:var(--side);font-weight:600}
+.body img{max-width:100%;border-radius:8px}
+/* code blocks are dark in every theme: syntax colours of the dark palette there */
+.body pre{--h-kw:#c678dd;--h-str:#98c379;--h-num:#d19a66;--h-com:#7f848e;--h-fn:#61afef;--h-tag:#e06c75}
 details.think{color:var(--muted);font-size:13px;margin:4px 0}
 details.think div{white-space:pre-wrap;border-left:2px solid var(--line);padding-left:10px;margin-top:4px}
 .err{color:var(--danger)}
@@ -177,6 +215,9 @@ details.think div{white-space:pre-wrap;border-left:2px solid var(--line);padding
 .dcard h3{font-size:16px}
 .dcard p{margin:0 0 6px;color:var(--muted);font-size:14px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
 .dcard .prow{margin-top:6px}
+#dialog .dcard input{font:inherit;font-size:14px;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;outline:none}
+#dialog .dcard input:focus{border-color:var(--accent)}
+#chatMenu .fly{max-height:50vh;overflow:auto}
 .prow button.ok.danger{background:var(--danger);border-color:var(--danger);color:var(--panel)}
 .msg{max-width:780px}
 .hello{max-width:780px;margin:0 auto;padding:36px 22px 0;font-size:22px;font-weight:500;display:flex;gap:10px;align-items:center}
@@ -230,6 +271,17 @@ main.newchat .hello{padding-top:0}
 .menu .lbl{color:var(--muted);font-size:12px;padding:8px 10px 3px;display:block}
 /* the composer's + menu: attach files, switch on skills; active skills as chips above the text */
 #plusMenu{width:290px}
+#plusMenu .item.off{cursor:default;opacity:.65}
+/* a switch (web search in the + menu) */
+.switch{position:relative;width:30px;height:18px;border-radius:999px;background:var(--line);flex:none;align-self:center;transition:background .15s}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--panel);box-shadow:0 1px 2px #0006;transition:transform .15s}
+.switch.on{background:var(--accent)}
+.switch.on::after{transform:translateX(12px);background:#fff}
+.sources{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:8px 0 2px;font-size:12px}
+.sources>span{color:var(--muted);margin-right:2px}
+.sources a{display:inline-block;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:2px 9px;border:1px solid var(--line);border-radius:999px;color:var(--muted);text-decoration:none;background:var(--panel)}
+.sources a:hover{color:var(--text);border-color:var(--accent)}
+.snote{font-size:12px;color:var(--muted);margin:2px 0 6px}
 #plusMenu .has-fly>.chev{color:var(--muted);align-self:center}
 #plusMenu .fly{width:320px;overflow:auto;left:calc(100% + 10px)}
 #plusMenu.down .fly{top:-5px;bottom:auto}
@@ -429,7 +481,7 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
 <body>
 <aside>
   <div class="brand"><span>EDU-KI Code</span><button class="tbtn" id="sbToggle" type="button" title="Seitenleiste einklappen"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button></div>
-  <button class="new" id="new">+ Neuer Chat</button>
+  <div class="newrow"><button class="new" id="new">+ Neuer Chat</button><button class="new projbtn" id="projBtn" title="Projekte: Chats nach Arbeitsordner"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Projekte</button></div>
   <div id="chats"></div>
   <div class="me">
     <div class="umenu" id="userMenu">
@@ -503,7 +555,7 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
 <div class="overlay" id="lightbox"><div class="lbox"></div></div>
 <div class="menu" id="chatMenu"></div>
 <div class="overlay" id="dialog"><div class="pcard dcard" role="alertdialog" aria-modal="true" aria-labelledby="dTitle" aria-describedby="dText">
-  <h3 id="dTitle"></h3><p id="dText"></p>
+  <h3 id="dTitle"></h3><p id="dText"></p><input id="dInput" hidden spellcheck="false" autocomplete="off">
   <div class="prow"><button id="dCancel" type="button">Abbrechen</button><button class="ok" id="dOk" type="button">OK</button></div>
 </div></div>
 <div class="overlay" id="search"><div class="pcard scard">
@@ -559,16 +611,19 @@ const errMsg = e => { let m = String(e && e.message || e); try { m = JSON.parse(
 
 // The app's own dialogs instead of confirm()/alert(): the window draws those itself, unstyled, in English and
 // titled with the page's address. Resolves true for the main button, false for cancel, Escape or a click outside.
-function dialog({title, text = "", ok = "OK", cancel = "Abbrechen", danger = false}) {
+function dialog({title, text = "", ok = "OK", cancel = "Abbrechen", danger = false, input = null}) {
+  // input: {value, placeholder}: a text field; resolves to its text then (null when cancelled)
   return new Promise(resolve => {
-    const d = $("dialog"), back = document.activeElement;
+    const d = $("dialog"), back = document.activeElement, field = $("dInput");
     $("dTitle").textContent = title; $("dText").textContent = text; $("dText").hidden = !text;
+    field.hidden = !input; field.value = input ? input.value || "" : ""; field.placeholder = input ? input.placeholder || "" : "";
     $("dOk").textContent = ok; $("dOk").classList.toggle("danger", danger);
     $("dCancel").textContent = cancel || ""; $("dCancel").hidden = !cancel;
     const close = v => {
+      if (input && v && !field.value.trim()) return field.focus();      // a name is needed: stay open
       d.classList.remove("on"); document.removeEventListener("keydown", keys, true);
       if (back && back.focus) back.focus();
-      resolve(v);
+      resolve(input ? (v ? field.value.replace(/\s+/g, " ").trim() : null) : v);
     };
     const keys = e => {
       if (e.key !== "Escape" && e.key !== "Enter") return;
@@ -578,7 +633,8 @@ function dialog({title, text = "", ok = "OK", cancel = "Abbrechen", danger = fal
     $("dOk").onclick = () => close(true); $("dCancel").onclick = () => close(false);
     d.onclick = e => { if (e.target === d) close(false); };
     document.addEventListener("keydown", keys, true);
-    d.classList.add("on"); (danger && cancel ? $("dCancel") : $("dOk")).focus();   // deleting needs a deliberate click
+    d.classList.add("on");
+    if (input) { field.focus(); field.select(); } else (danger && cancel ? $("dCancel") : $("dOk")).focus();   // deleting needs a deliberate click
   });
 }
 const notice = (title, text = "") => dialog({title, text, cancel: null});
@@ -652,8 +708,9 @@ async function loadModels() {
 $("model").onchange = () => { localStorage.model = $("model").value; if (chat) chat.model = $("model").value; };   // the chat stays where it is stored (save())
 
 async function loadList() {
-  const r = await api("/app/chats");
-  list = r.chats || []; renderList();
+  const [r, pr] = await Promise.all([api("/app/chats"), api("/app/projects").catch(() => null)]);
+  list = r.chats || []; if (pr) namedProjects = pr.projects || [];
+  renderList();
 }
 const SEARCH_ICON = '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
 // Sidebar: pinned chats first, then by day. Each chat: pin, rename (also double-click), delete.
@@ -665,6 +722,7 @@ async function updateChat(c, fields, failTitle) {
   Object.assign(c, fields);                 // shown at once, saved in the background
   if (fields.title) renamed.set(c.id, {title: fields.title, at: Date.now()});
   if (chat && chat.id === c.id && fields.title) { chat.title = fields.title; render(); }
+  if (chat && chat.id === c.id && "project" in fields) chat.project = fields.project;
   renderList();
   try { await api(chatUrl(c), json("PATCH", fields)); } catch (e) { notice(failTitle, errMsg(e)); }
   loadList();
@@ -694,19 +752,35 @@ function closeChatMenu() {
   $("chatMenu").classList.remove("on");
   if (chatMenuFor) { chatMenuFor.el.classList.remove("menuopen"); chatMenuFor = null; releasePeek(); }
 }
-function openChatMenu(el, c, btn) {
-  const same = chatMenuFor && chatMenuFor.c.id === c.id;
+const menuRow = (act, icon, label, cls = "", extra = "") => `<div class="item ${cls}" data-cm="${act}"${extra}><span class="mrow"><i class="mi">${icon}</i><span>${label}</span></span></div>`;
+function openMenuCard(el, btn, html, target) {
+  const same = chatMenuFor && chatMenuFor.el === el;
   closeChatMenu(); if (same) return;
-  const m = $("chatMenu"), row = (act, icon, label, cls = "") => `<div class="item ${cls}" data-cm="${act}"><span class="mrow"><i class="mi">${icon}</i><span>${label}</span></span></div>`;
-  m.innerHTML = row("pin", PIN, c.pinned ? "Lösen" : "Anpinnen") + row("rename", PEN, "Umbenennen") + "<hr>" + row("delete", TRASH, "Löschen", "danger");
-  m.classList.add("on"); el.classList.add("menuopen"); chatMenuFor = {c, el};
+  const m = $("chatMenu"); m.innerHTML = html;
+  m.classList.add("on"); el.classList.add("menuopen"); chatMenuFor = {...target, el};
   const r = btn.getBoundingClientRect(), h = m.offsetHeight, w = m.offsetWidth;   // under the button, or above it near the bottom
   m.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + "px";
   m.style.top = (r.bottom + 4 + h > innerHeight - 8 ? r.top - 4 - h : r.bottom + 4) + "px";
 }
+function openChatMenu(el, c, btn) {
+  const mine = namedProjects.some(p => p.id === c.project) ? c.project : null;
+  const moves = namedProjects.map(p => menuRow("move", STACK, esc(p.name), "", ` data-proj="${esc(p.id)}"`).replace("</div>", p.id === mine ? '<span class="ck">✓</span></div>' : "</div>")).join("")
+    + (mine ? menuRow("move", BACK, "Aus dem Projekt nehmen", "", ' data-proj=""') : "")
+    + (namedProjects.length ? "<hr>" : "") + menuRow("movenew", STACK, "Neues Projekt…");
+  openMenuCard(el, btn, menuRow("pin", PIN, c.pinned ? "Lösen" : "Anpinnen") + menuRow("rename", PEN, "Umbenennen")
+    + `<div class="item has-fly" data-cm="movemenu"><span class="mrow"><i class="mi">${STACK}</i><span>In Projekt verschieben</span></span><span class="chev">›</span><div class="fly">${moves}</div></div>`
+    + "<hr>" + menuRow("delete", TRASH, "Löschen", "danger"), {c});
+}
+function openProjectMenu(el, p, btn) {
+  openMenuCard(el, btn, menuRow("prename", PEN, "Umbenennen") + "<hr>" + menuRow("pdelete", TRASH, "Löschen", "danger"), {p});
+}
 $("chatMenu").onclick = e => {
   const it = e.target.closest("[data-cm]"); if (!it || !chatMenuFor) return;
-  const {c} = chatMenuFor; closeChatMenu();
+  if (it.dataset.cm === "movemenu") { it.classList.toggle("open"); return; }   // its submenu (also on hover)
+  const {c, p} = chatMenuFor; closeChatMenu();
+  if (p) { if (it.dataset.cm === "prename") renameProject(p); else if (it.dataset.cm === "pdelete") deleteProject(p); return; }
+  if (it.dataset.cm === "move") return updateChat(c, {project: it.dataset.proj || null}, "Verschieben fehlgeschlagen");
+  if (it.dataset.cm === "movenew") return createProject(c);
   const el = [...document.querySelectorAll(".chat")].find(x => x.dataset.cid === c.id && x.dataset.src === (c.source || ""));
   if (it.dataset.cm === "pin") updateChat(c, {pinned: !c.pinned}, c.pinned ? "Lösen fehlgeschlagen" : "Anpinnen fehlgeschlagen");
   else if (it.dataset.cm === "rename" && el) startRename(el, c);
@@ -723,9 +797,137 @@ async function deleteChat(c) {
   if (chat && chat.id === c.id) newChat();
   loadList();
 }
+// ---- sidebar views: all chats, the projects (working folders), one project's chats ------------
+const FOLDER = '<svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
+const BACK = '<svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>';
+let sideView = {mode: "chats"};
+try { const v = JSON.parse(localStorage.sideView || "null"); if (v && v.mode) sideView = v; } catch {}
+function setSideView(v) {
+  sideView = v; try { localStorage.sideView = JSON.stringify(v); } catch {}
+  closeChatMenu(); renderList(); $("chats").scrollTop = 0;
+}
+$("projBtn").onclick = () => setSideView(sideView.mode === "chats" ? {mode: "projects"} : {mode: "chats"});
+// Two kinds: named projects (made here, no folder needed) and working folders. A chat in a named project
+// is listed there only; otherwise under its folder, if it has one.
+const STACK = '<svg viewBox="0 0 24 24"><path d="M12 3.5l8.5 4.5-8.5 4.5L3.5 8z"/><path d="M3.5 12.5l8.5 4.5 8.5-4.5"/><path d="M3.5 16.5l8.5 4.5 8.5-4.5"/></svg>';
+let namedProjects = [];                     // [{id, name, created_at}] from /app/projects
+const projKey = (workdir, conn) => `f:${conn || ""}|${workdir}`;
+const namedKey = id => `p:${id}`;
+function projects() {                       // newest activity first
+  const named = new Map(namedProjects.map(p => [p.id, {key: namedKey(p.id), kind: "named", id: p.id, name: p.name, chats: [], updated_at: p.created_at || 0}]));
+  const folders = new Map();
+  for (const c of list) {
+    const np = c.project && named.get(c.project);
+    if (np) { np.chats.push(c); np.updated_at = Math.max(np.updated_at, c.updated_at || 0); continue; }
+    if (!c.workdir) continue;
+    const k = projKey(c.workdir, c.conn);
+    let p = folders.get(k);
+    if (!p) folders.set(k, p = {key: k, kind: "folder", workdir: c.workdir, conn: c.conn || null, chats: [], updated_at: 0});
+    p.chats.push(c); p.updated_at = Math.max(p.updated_at, c.updated_at || 0);
+  }
+  return [...named.values(), ...folders.values()].sort((a, b) => b.updated_at - a.updated_at);
+}
+const projName = p => p.kind === "named" ? p.name : (p.workdir.split("/").filter(Boolean).pop() || "/");
+async function createProject(c) {          // c: a chat that goes into the new project right away
+  const name = await dialog({title: "Neues Projekt", ok: "Anlegen", input: {placeholder: "Name des Projekts"},
+    text: c ? `„${c.title || "Chat"}“ kommt in das neue Projekt.` : "Ein Projekt sammelt Chats, auch ohne Arbeitsordner."});
+  if (!name) return;
+  let p;
+  try { p = (await api("/app/projects", json("POST", {name}))).project; } catch (e) { return notice("Projekt nicht angelegt", errMsg(e)); }
+  namedProjects.push(p);
+  if (c) await updateChat(c, {project: p.id}, "Verschieben fehlgeschlagen"); else setSideView({mode: "project", key: namedKey(p.id)});
+}
+async function renameProject(p) {
+  const name = await dialog({title: "Projekt umbenennen", ok: "Umbenennen", input: {value: p.name}});
+  if (!name || name === p.name) return;
+  try { await api(`/app/projects/${enc(p.id)}`, json("PATCH", {name})); } catch (e) { return notice("Umbenennen fehlgeschlagen", errMsg(e)); }
+  loadList();
+}
+async function deleteProject(p) {
+  const n = p.chats.length;
+  if (!await dialog({title: "Projekt löschen?", ok: "Löschen", danger: true,
+    text: `„${p.name}“ wird gelöscht.` + (n ? ` ${n === 1 ? "Sein Chat bleibt" : `Seine ${n} Chats bleiben`} erhalten, dann ohne Projekt.` : "")})) return;
+  try { await api(`/app/projects/${enc(p.id)}`, {method: "DELETE"}); } catch (e) { return notice("Löschen fehlgeschlagen", errMsg(e)); }
+  if (chat && chat.project === p.id) chat.project = null;
+  if (sideView.key === p.key) setSideView({mode: "projects"});
+  loadList();
+}
+let homeDir = "";                           // from /app/status: folders there are shown as ~/…
+function projWhere(p) {
+  if (p.kind === "named") return "Projekt";
+  if (p.conn) { const cn = connOf(p.conn); return cn ? `${cn.name} (SSH)` : "SSH-Verbindung, nicht mehr vorhanden"; }
+  let parent = p.workdir.replace(/\/+[^/]*\/*$/, "") || "/";
+  if (homeDir && (parent === homeDir || parent.startsWith(homeDir + "/"))) parent = "~" + parent.slice(homeDir.length);
+  return parent.length > 36 ? "…" + parent.slice(-35) : parent;
+}
+function sideHead(box, title, sub, back) {
+  const h = document.createElement("div"); h.className = "sidehead";
+  h.innerHTML = `<button class="sideback" title="Zurück">${BACK}</button><span><b>${esc(title)}</b>${sub ? `<small>${esc(sub)}</small>` : ""}</span>`;
+  h.querySelector("button").onclick = back; box.append(h);
+}
+function newChatIn(p) {
+  if (p.kind === "folder" && p.conn && !connOf(p.conn)) return notice("SSH-Verbindung fehlt", "Die Verbindung dieses Projekts gibt es nicht mehr.");
+  newChat();
+  if (p.kind === "named") { chat.project = p.id; chat.workdir = null; chat.conn = null; }   // a project without a folder
+  else { chat.conn = p.conn || null; chat.workdir = p.workdir; addRecent(p.workdir); }
+  resetPanel(); render(); $("input").focus();
+}
+function chatItem(c) {
+  const el = document.createElement("div");
+  el.className = "chat" + (chat && chat.id === c.id ? " active" : "") + (c.pinned ? " pinned" : "");
+  el.dataset.cid = c.id; el.dataset.src = c.source || "";
+  const tag = c.source === "local" ? `<small class="d">lokal</small>` : (c.provider_name ? `<small class="d">${esc(c.provider_name)}</small>` : "");
+  el.innerHTML = `<span>${esc(c.title || "Chat")}${tag}</span>${c.pinned ? `<i class="pinmark" title="Angepinnt">${PIN}</i>` : ""}`
+    + `<button class="more" title="Anpinnen, umbenennen, löschen">${DOTS}</button>`;
+  el.onclick = () => { if (!(chat && chat.id === c.id)) openChat(c.id, c.provider, c.source); };   // the open one: nothing to load
+  el.ondblclick = e => { if (!e.target.closest(".more")) { e.preventDefault(); startRename(el, c); } };
+  el.querySelector(".more").onclick = e => { e.stopPropagation(); openChatMenu(el, c, e.currentTarget); };
+  return el;
+}
+function renderProjects(box) {
+  sideHead(box, "Projekte", "Eigene Projekte und Arbeitsordner", () => setSideView({mode: "chats"}));
+  const nb = document.createElement("button"); nb.className = "projnew"; nb.textContent = "+ Neues Projekt";
+  nb.title = "Ein Projekt mit Namen, ohne Ordner"; nb.onclick = () => createProject(null); box.append(nb);
+  const ps = projects();
+  if (!ps.length) {
+    const n = document.createElement("div"); n.className = "sidenote";
+    n.textContent = "Noch keine Projekte. Lege eines an, oder wähle in einem Chat einen Arbeitsordner (unter dem Eingabefeld): Ordner erscheinen hier von selbst.";
+    return box.append(n);
+  }
+  const here = !chat ? "" : chat.project && namedProjects.some(x => x.id === chat.project) ? namedKey(chat.project) : chat.workdir ? projKey(chat.workdir, chat.conn) : "";
+  for (const p of ps) {
+    const el = document.createElement("div"), named = p.kind === "named";
+    el.className = "chat proj" + (p.key === here ? " active" : "");
+    el.title = named ? p.name : p.workdir;
+    el.innerHTML = `<i class="pico">${named ? STACK : FOLDER}</i><span>${esc(projName(p))}<small class="d">${esc(projWhere(p))}</small></span>`
+      + `<small class="cnt" title="${p.chats.length} ${p.chats.length === 1 ? "Chat" : "Chats"}">${p.chats.length}</small>`
+      + (named ? `<button class="more" title="Umbenennen, löschen">${DOTS}</button>` : "");
+    el.onclick = () => setSideView({mode: "project", key: p.key});
+    if (named) el.querySelector(".more").onclick = e => { e.stopPropagation(); openProjectMenu(el, p, e.currentTarget); };
+    box.append(el);
+  }
+}
+function renderProject(box) {
+  const key = /^[pf]:/.test(sideView.key) ? sideView.key : "f:" + sideView.key;
+  let p = projects().find(x => x.key === key);
+  if (!p && key.startsWith("p:")) {         // a named project without chats (yet), or one that is gone
+    const np = namedProjects.find(x => namedKey(x.id) === key);
+    if (!np) return setSideView({mode: "projects"});
+    p = {key, kind: "named", id: np.id, name: np.name, chats: []};
+  }
+  if (!p) { const body = key.slice(2), sep = body.indexOf("|"); p = {key, kind: "folder", conn: body.slice(0, sep) || null, workdir: body.slice(sep + 1), chats: []}; }
+  sideHead(box, projName(p), projWhere(p), () => setSideView({mode: "projects"}));
+  const nb = document.createElement("button"); nb.className = "projnew"; nb.textContent = "+ Neuer Chat hier";
+  nb.title = p.kind === "named" ? `Neuer Chat im Projekt ${p.name}` : `Neuer Chat mit dem Arbeitsordner ${p.workdir}`;
+  nb.onclick = () => newChatIn(p); box.append(nb);
+  for (const c of [...p.chats].sort((a, b) => (b.pinned - a.pinned) || (b.updated_at - a.updated_at))) box.append(chatItem(c));
+}
 function renderList() {
   if (renaming || chatMenuFor) return;
   const box = $("chats"); box.innerHTML = "";
+  $("projBtn").classList.toggle("on", sideView.mode !== "chats");
+  if (sideView.mode === "projects") return renderProjects(box);
+  if (sideView.mode === "project" && sideView.key) return renderProject(box);
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const yest = new Date(today); yest.setDate(yest.getDate() - 1);
   const groups = [["Angepinnt", []], ["Heute", []], ["Gestern", []], ["Älter", []]];
@@ -740,18 +942,7 @@ function renderList() {
   for (const [label, items] of groups) {
     if (!items.length) continue;
     header(label, !any); any = true;
-    for (const c of items) {
-      const el = document.createElement("div");
-      el.className = "chat" + (chat && chat.id === c.id ? " active" : "") + (c.pinned ? " pinned" : "");
-      el.dataset.cid = c.id; el.dataset.src = c.source || "";
-      const tag = c.source === "local" ? `<small class="d">lokal</small>` : (c.provider_name ? `<small class="d">${esc(c.provider_name)}</small>` : "");
-      el.innerHTML = `<span>${esc(c.title || "Chat")}${tag}</span>${c.pinned ? `<i class="pinmark" title="Angepinnt">${PIN}</i>` : ""}`
-        + `<button class="more" title="Anpinnen, umbenennen, löschen">${DOTS}</button>`;
-      el.onclick = () => { if (!(chat && chat.id === c.id)) openChat(c.id, c.provider, c.source); };   // the open one: nothing to load
-      el.ondblclick = e => { if (!e.target.closest(".more")) { e.preventDefault(); startRename(el, c); } };
-      el.querySelector(".more").onclick = e => { e.stopPropagation(); openChatMenu(el, c, e.currentTarget); };
-      box.append(el);
-    }
+    for (const c of items) box.append(chatItem(c));
   }
   if (!any) header("Heute", true);
 }
@@ -995,7 +1186,7 @@ function newChat() {
   editId = null;
   const model = $("model").value || Object.keys(MODEL_META)[0] || "";
   chat = {id: null, title: "Neuer Chat", model, provider: modelProvider(model), source: modelIsOW(model) ? "openwebui" : "local",
-          conn: null, workdir: localStorage.workdir || null, perm: "ask", skills: [], history: {messages: {}, currentId: null}, updated_at: 0};
+          conn: null, workdir: localStorage.workdir || null, perm: "ask", skills: [], webSearch: false, history: {messages: {}, currentId: null}, updated_at: 0};
   resetPanel(); render(); loadList();
 }
 
@@ -1013,9 +1204,12 @@ async function openChat(id, provider, source) {
   if (!MODEL_META[model]) model = $("model").value;              // that model is gone: carry on with the selected one
   chat = {id, title: c.title || "Chat", conn: savedConn, workdir: h.conn && !savedConn ? null : (h.workdir || null), perm: "ask", model,
           provider: c.provider || provider || modelProvider(model), source: c.source || source || (modelIsOW(model) ? "openwebui" : "local"),
-          skills: Array.isArray(h.skills) ? h.skills : [], history: h.history || {messages: {}, currentId: null}, updated_at: c.updated_at, raw: h};
+          skills: Array.isArray(h.skills) ? h.skills : [], webSearch: !!h.webSearch, history: h.history || {messages: {}, currentId: null}, updated_at: c.updated_at, raw: h};
   if ([...$("model").options].some(o => o.value === chat.model)) $("model").value = chat.model;
-  addRecent(chat.workdir); resetPanel(); render(); loadList();
+  addRecent(chat.workdir); resetPanel(); render();
+  const known = list.find(x => x.id === id);
+  chat.project = h.project || (known && known.project) || null;
+  if (chat.workdir && known && !known.workdir) noteMeta(chat).then(loadList); else loadList();   // an older chat: its folder joins the projects now
 }
 
 // ---- rendering ---------------------------------------------------------
@@ -1024,7 +1218,40 @@ function branch() {          // linear path root -> currentId
   for (let id = chat.history.currentId; id && m[id]; id = m[id].parentId) out.unshift(m[id]);
   return out;
 }
+// Markdown of model answers: marked (GitHub flavour) and DOMPurify, so an answer can never run code in the
+// app. HTML the model writes is shown as text (an answer about "<title>" stays readable). Code blocks get
+// highlight.js colours and the copy button. Results are cached: streaming redraws the log many times a second.
+const mdCache = new Map(), MD_CACHE = 400;
+const mdOk = !!(window.marked && window.DOMPurify);
+if (mdOk) marked.use({gfm: true, breaks: true, renderer: {
+  html({text}) { return esc(text); },
+  code({text, lang}) {
+    const l = (lang || "").trim().split(/\s+/)[0].toLowerCase();
+    let body = esc(text);
+    if (window.hljs && l && hljs.getLanguage(l) && text.length < 200000) {
+      try { body = hljs.highlight(text, {language: l, ignoreIllegals: true}).value; } catch {}
+    }
+    return `<div class="codeblock"><button class="ccopy" type="button" title="Code kopieren">${COPY}</button><pre><code>${body}</code></pre></div>`;
+  },
+}});
 function md(text) {
+  if (!mdOk) return mdPlain(text);
+  let html = mdCache.get(text);
+  if (html === undefined) {
+    html = DOMPurify.sanitize(marked.parse(text), {FORBID_TAGS: ["style", "form", "iframe"], FORBID_ATTR: ["style"]});
+    mdCache.set(text, html);
+    if (mdCache.size > MD_CACHE) mdCache.delete(mdCache.keys().next().value);
+  }
+  return html;
+}
+// Links in answers open in the browser: in the app window a click would take the window itself away from the app.
+$("log").addEventListener("click", e => {
+  const a = e.target.closest(".body a[href], .sources a[href]");
+  if (!a || a.classList.contains("flink")) return;
+  e.preventDefault();
+  if (/^(https?|mailto):/i.test(a.href) && !shellPost({open: a.href})) window.open(a.href, "_blank", "noopener");
+});
+function mdPlain(text) {            // without the libraries: code blocks, `code`, **bold**, paragraphs
   const parts = text.split(/```/);
   return parts.map((p, i) => {
     if (i % 2) { const nl = p.indexOf("\n");
@@ -1059,6 +1286,7 @@ const ext = p => (p.includes(".") ? p.split(".").pop() : "").toLowerCase();
 let curIdx = new Map();
 
 function statusHtml(m) {
+  if (m.searching) return `<div class="status"><span class="spin" style="--p:${Date.now() % 1000}"><i></i><i></i><i></i></span>Sucht im Web <span class="tm" data-t="${m.started || Date.now()}">0s</span></div>`;
   const s = m.steps && m.steps[m.steps.length - 1], c = s && s.calls && s.calls[s.calls.length - 1];
   if (c && c.status === "approval") return `<div class="status">Wartet auf Freigabe</div>`;
   const verbs = {write_file: "Erstelle", edit_file: "Ändere", bash: "Führe aus", read_file: "Lese", list_dir: "Lese", grep: "Suche", glob: "Suche"};
@@ -1295,6 +1523,7 @@ function msgHtml(m) {
     const think = s.reasoning ? `<details class="think" data-k="${k}"${openSet.has(k) ? " open" : ""}><summary>Denkprozess</summary><div>${esc(s.reasoning)}</div></details>` : "";
     return think + (s.content ? `<div class="body">${linkFiles(md(s.content))}</div>` : "") + (s.calls || []).map(callHtml).join("");
   }).join("");
+  inner += sourcesHtml(m);
   if (!m.done) inner += statusHtml(m);
   const err = m.error ? `<div class="err">${esc(m.error)}</div>` : "";
   return `<div class="msg"><div class="who">${esc(m.modelName || modelName(m.model) || "")}</div>${inner}${err}${m.done === false ? "" : actsHtml(m)}</div>`;
@@ -1355,7 +1584,7 @@ function forkAt(m) {
   editId = null;
   chat = {id: null, title: `${old.title || "Chat"} – Abzweig`, model: old.model, provider: modelProvider(old.model),
           source: modelIsOW(old.model) ? "openwebui" : "local", conn: old.conn, workdir: old.workdir, perm: old.perm,
-          skills: [...(old.skills || [])], updated_at: 0,
+          skills: [...(old.skills || [])], webSearch: !!old.webSearch, project: old.project || null, updated_at: 0,
           history: {messages: Object.fromEntries(path.map(x => [x.id, x])), currentId: path.length ? path[path.length - 1].id : null}};
   if (m.role === "user") {
     $("input").value = m.content || ""; $("input").oninput();
@@ -1603,6 +1832,7 @@ $("modelMenu").addEventListener("mouseover", e => {     // a short pause, so cro
 });
 // one menu at a time: a click outside the menu's own wrapper closes it
 document.addEventListener("click", e => {
+  if (e.target.closest("#dialog")) return;      // answering a dialog that a menu opened leaves the menu open
   document.querySelectorAll(".menu.on, .umenu.on").forEach(m => { if (!m.parentElement.contains(e.target)) m.classList.remove("on"); });
 }, true);
 
@@ -1816,6 +2046,7 @@ const skillsSummary = () => { const n = (chat.skills || []).length; return n ? `
 function plusMenuHtml() {
   return `<div class="item" data-plus="file"><span class="mrow"><i class="mi">${CLIP}</i><span>Datei oder Bild anhängen`
     + `<small class="d">Auch per Ziehen ins Fenster oder Einfügen (Strg+V)</small></span></span></div>`
+    + webRowHtml()
     + `<div class="item has-fly" data-plus="skills"><span class="mrow"><i class="mi">${SPARK}</i><span>Skills<small class="d" id="skillSum">${skillsSummary()}</small></span></span>`
     + `<span class="chev">›</span><div class="fly" id="skillFly">${skillItemsHtml()}</div></div>`;
 }
@@ -1832,7 +2063,8 @@ function fitSkillFly() {                    // the submenu opens beside its row 
   fly.style.left = room < 220 ? "auto" : ""; fly.style.right = room < 220 ? "0" : "";   // no room: over the card
 }
 function renderSkillChips() {
-  $("skillChips").innerHTML = (chat && chat.skills || []).map(s => `<span class="skchip" data-sk="${esc(skillKey(s))}" title="${esc(s.name)} – Klick zeigt den Text">`
+  $("skillChips").innerHTML = (chat && chat.webSearch ? `<span class="skchip" title="Websuche ist für diesen Chat an">${GLOBE}<span>Websuche</span>`
+    + `<button type="button" data-rmweb="1" title="Websuche ausschalten">✕</button></span>` : "") + (chat && chat.skills || []).map(s => `<span class="skchip" data-sk="${esc(skillKey(s))}" title="${esc(s.name)} – Klick zeigt den Text">`
     + `${SPARK}<span>${esc(s.name)}</span><button type="button" data-rmskill="${esc(skillKey(s))}" title="Skill ausschalten">✕</button></span>`).join("");
 }
 $("plus").onclick = () => {
@@ -1840,12 +2072,14 @@ $("plus").onclick = () => {
   if (m.classList.contains("on")) return m.classList.remove("on");
   m.innerHTML = plusMenuHtml(); m.classList.add("on"); placeMenu(m); fitSkillFly();
   loadSkills().then(() => { if (m.classList.contains("on")) refreshSkillFly(); });   // a fresh list each time
+  loadSearchProviders().then(refreshWebRow);
 };
 $("plusMenu").addEventListener("mouseover", e => { if (e.target.closest(".has-fly")) fitSkillFly(); });
 $("plusMenu").onclick = e => {
   const it = e.target.closest(".item"); if (!it) return;
   if (it.dataset.plus === "file") { $("plusMenu").classList.remove("on"); return pickFiles(); }
   if (it.dataset.plus === "skills") { it.classList.toggle("open"); return fitSkillFly(); }   // click (or hover) opens the submenu
+  if (it.dataset.plus === "web") { if (!it.classList.contains("off")) toggleWebSearch(!chat.webSearch); return; }
   const s = (skillList || []).find(x => skillKey(x) === it.dataset.skill); if (!s) return;
   const on = (chat.skills || []).some(x => skillKey(x) === skillKey(s));
   chat.skills = on ? chat.skills.filter(x => skillKey(x) !== skillKey(s)) : [...(chat.skills || []), {id: s.id, name: s.name, provider: s.provider}];
@@ -1854,6 +2088,7 @@ $("plusMenu").onclick = e => {
   if (chat.id) save().catch(() => {});
 };
 $("skillChips").onclick = async e => {
+  if (e.target.closest("[data-rmweb]")) return toggleWebSearch(false);
   const rm = e.target.closest("[data-rmskill]");
   if (rm) {
     chat.skills = (chat.skills || []).filter(x => skillKey(x) !== rm.dataset.rmskill); renderSkillChips();
@@ -1863,6 +2098,67 @@ $("skillChips").onclick = async e => {
   const chip = e.target.closest(".skchip"), s = chip && (chat.skills || []).find(x => skillKey(x) === chip.dataset.sk);
   if (s) { try { showLightbox(`<div class="lhead">Skill: ${esc(s.name)}</div><pre>${esc(await skillContent(s))}</pre>`); } catch (err) { notice("Skill nicht verfügbar", errMsg(err)); } }
 };
+// ---- web search: Open WebUI searches (its engine, e.g. you.com), the results go to whichever model answers ----
+const GLOBE = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/></svg>';
+let searchProviders = null;                 // [{provider, provider_name, notice}] (null: not asked yet)
+const searchCtx = new Map();                // answer id -> search results for the model; only while answering, not saved
+async function loadSearchProviders() {
+  try { searchProviders = (await api("/app/websearch")).providers || []; } catch { if (searchProviders === null) searchProviders = []; }
+}
+const searchProvider = () => (searchProviders || [])[0] || null;
+function webRowHtml() {
+  const sp = searchProvider(), on = !!(chat && chat.webSearch);
+  const row = (state, sub) => `<div class="item${state === "ready" ? "" : " off"}" data-plus="web" data-webrow="${state}"><span class="mrow"><i class="mi">${GLOBE}</i>`
+    + `<span>Websuche<small class="d">${sub}</small></span></span>`
+    + `<span class="switch${on && state === "ready" ? " on" : ""}" role="switch" aria-checked="${on && state === "ready"}"></span></div>`;
+  if (searchProviders === null) return row("loading", "Lädt…");
+  if (!sp) return row("none", "Braucht einen Open-WebUI-Anbieter mit Websuche (z. B. EDU-KI)");
+  return row("ready", `Über ${esc(sp.provider_name || sp.provider)}, für diesen Chat`);
+}
+function refreshWebRow() {                  // same state: only flip the switch, so it slides instead of jumping
+  const r = $("plusMenu").querySelector("[data-webrow]"); if (!r) return;
+  const html = webRowHtml(), state = html.match(/data-webrow="(\w+)"/)[1], sw = r.querySelector(".switch");
+  if (r.dataset.webrow !== state || !sw) { r.outerHTML = html; return; }
+  const on = state === "ready" && !!chat.webSearch;
+  sw.classList.toggle("on", on); sw.setAttribute("aria-checked", on);
+}
+async function toggleWebSearch(on) {
+  const sp = searchProvider();
+  if (on && sp && sp.notice) {                // the provider asks users to confirm where queries go: once per text
+    let seen = false; try { seen = localStorage["websearch-ok:" + sp.provider] === sp.notice; } catch {}
+    if (!seen) {
+      if (!await dialog({title: "Websuche einschalten?", text: sp.notice, ok: "Einschalten"})) return;
+      try { localStorage["websearch-ok:" + sp.provider] = sp.notice; } catch {}
+    }
+  }
+  chat.webSearch = on; renderSkillChips(); refreshWebRow();
+  if (chat.id) save().catch(() => {});
+}
+async function runWebSearch(a) {
+  if (searchProviders === null) await loadSearchProviders();
+  const sp = searchProvider();
+  if (!sp) { a.searchNote = "Websuche nicht verfügbar: kein Open-WebUI-Anbieter mit Websuche angemeldet."; return; }
+  a.searching = true; render();
+  const mine = MODEL_META[chat.model] && MODEL_META[chat.model].provider === sp.provider;   // a model there writes the queries
+  const qmodel = mine ? modelName(chat.model) : (Object.values(MODEL_META).find(m => m.provider === sp.provider) || {}).model;
+  const msgs = branch().filter(m => m.id !== a.id && m.content).map(m => ({role: m.role, content: m.content}));
+  try {
+    const r = await api("/app/websearch", json("POST", {provider: sp.provider, messages: msgs, model: qmodel || null}));
+    a.sources = (r.results || []).map(x => ({title: x.title, url: x.url}));
+    if (a.sources.length) searchCtx.set(a.id, searchPrompt(r)); else a.searchNote = "Die Websuche hat nichts gefunden.";
+  } catch (e) { const m = errMsg(e); a.searchNote = /websuche/i.test(m) ? m : "Websuche fehlgeschlagen: " + m; }
+  a.searching = false;
+}
+const searchPrompt = r => "Web search results for the user's latest message"
+  + (r.queries && r.queries.length ? ` (searched for: ${r.queries.map(q => `"${q}"`).join(", ")})` : "")
+  + ". Use them where they help, and cite them as [1], [2], … by the numbers below. If they do not answer the question, say so.\n\n"
+  + r.results.map((x, i) => `[${i + 1}] ${x.title}\nURL: ${x.url}\n${x.content}`).join("\n\n");
+const hostOf = u => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; } };
+function sourcesHtml(m) {
+  return (m.searchNote ? `<div class="snote">${esc(m.searchNote)}</div>` : "")
+    + (m.sources && m.sources.length ? `<div class="sources"><span>Quellen</span>${m.sources.map((x, i) =>
+        `<a href="${esc(x.url)}" title="${esc(x.title || x.url)}">${i + 1} · ${esc(hostOf(x.url))}</a>`).join("")}</div>` : "");
+}
 function skillsPrompt() {
   const on = (chat.skills || []).filter(s => skillText.get(skillKey(s)));
   if (!on.length) return "";
@@ -1909,7 +2205,7 @@ function toOpenWebUI() {
   const msgs = chat.history.messages;
   const flat = Object.values(msgs).sort((a, b) => a.timestamp - b.timestamp);
   return {id: chat.id || "", title: chat.title, models: [modelName(chat.model)], params: {}, app_model: chat.model,
-          history: chat.history, workdir: chat.workdir, conn: chat.conn, skills: chat.skills || [], messages: flat, tags: [], files: [], timestamp: Date.now()};
+          history: chat.history, workdir: chat.workdir, conn: chat.conn, skills: chat.skills || [], webSearch: !!chat.webSearch, project: chat.project || null, messages: flat, tags: [], files: [], timestamp: Date.now()};
 }
 async function save() {
   // A chat stays where it was first saved (Open WebUI or this computer), also when a model of another
@@ -1917,7 +2213,8 @@ async function save() {
   if (!chat.id) { chat.source = modelIsOW(chat.model) ? "openwebui" : "local"; chat.provider = modelProvider(chat.model); }
   if (chat.source !== "openwebui") {
     const r = await api("/app/chats", json("POST", {id: chat.id || "", title: chat.title, model: chat.model,
-      provider: chat.provider, history: chat.history, workdir: chat.workdir, conn: chat.conn, skills: chat.skills || []}));
+      provider: chat.provider, history: chat.history, workdir: chat.workdir, conn: chat.conn, skills: chat.skills || [], webSearch: !!chat.webSearch,
+      project: chat.project || null}));
     chat.id = r.id; chat.updated_at = r.updated_at;
     return;
   }
@@ -1929,6 +2226,13 @@ async function save() {
     const c = await api(OW + `v1/chats/${chat.id}` + q, json("POST", {chat: toOpenWebUI()}));
     chat.updated_at = c.updated_at;
   }
+  noteMeta(chat);
+}
+function noteMeta(c) {                      // folder and project of an Open WebUI chat, for the projects (sent when they change)
+  const k = [c.workdir || "", c.conn || "", c.project || ""].join("|");
+  if (c.source !== "openwebui" || !c.id || c.metaSent === k) return Promise.resolve();
+  c.metaSent = k;
+  return api(`/app/chats/${enc(c.id)}/meta${owq(c.provider)}`, json("POST", {workdir: c.workdir, conn: c.conn, project: c.project})).catch(() => {});
 }
 
 const TOOLS = [
@@ -1949,7 +2253,7 @@ Read a file before editing it; prefer edit_file for small changes. Verify your w
 Be concise. When finished, summarize what you changed. Answer in the user's language.`;
 
 function payload(upto) {
-  const sys = [chat.workdir ? sysPrompt() : "", skillsPrompt()].filter(Boolean).join("\n\n");
+  const sys = [chat.workdir ? sysPrompt() : "", skillsPrompt(), searchCtx.get(upto) || ""].filter(Boolean).join("\n\n");
   const out = sys ? [{role: "system", content: sys}] : [];
   for (const m of branch()) {
     if (m.role === "user") out.push({role: "user", content: userContent(m)});
@@ -2042,6 +2346,7 @@ async function reply(u) {          // a new answer to user message u (also: "reg
   render();
   const missing = [];                         // skills whose text cannot be fetched go without, and the answer says so
   await Promise.all((chat.skills || []).map(sk => skillContent(sk).catch(() => { missing.push(sk.name); })));
+  if (chat.webSearch && !ctrl.signal.aborted) await runWebSearch(a);
   try {
     for (let turn = 0; turn < 40 && !ctrl.signal.aborted; turn++) {
       const step = {content: "", reasoning: "", calls: []};
@@ -2099,7 +2404,7 @@ document.addEventListener("visibilitychange", sync);
 
 async function boot() {
   const st = await (await fetch("/app/status")).json();
-  debugLog = !!st.debug;
+  debugLog = !!st.debug; homeDir = st.home || "";
   const logged = (st.providers || []).filter(p => p.logged_in);
   if (!logged.length) return showLogin();
   $("login").classList.remove("on");

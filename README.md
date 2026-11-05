@@ -113,10 +113,19 @@ links → Abmelden (alle) oder **Strg+,** → **Anbieter** → Abmelden (einer).
   PowerPoint (`.pptx`) und OpenDocument (`.odt`, `.odp`) gehen als Text in die Nachricht. Gescannte PDFs ohne
   Textebene, Excel und alte `.doc`/`.ppt` gehen nicht; die App sagt dann, was stattdessen geht. Ein Klick auf
   einen Anhang zeigt, was das Modell davon bekommt.
+- **Websuche**: Unter **+** für den Chat einschalten (Chip über dem Eingabefeld). Vor jeder Antwort sucht Open WebUI
+  (z. B. EDU-KI, dort mit you.com) zur letzten Frage, das Modell bekommt die Treffer und zitiert sie mit [1], [2];
+  die Quellen stehen unter der Antwort. Geht mit jedem Modell, braucht aber einen angemeldeten Open-WebUI-Anbieter
+  mit Websuche. Beim ersten Einschalten zeigt die App den Datenschutzhinweis des Anbieters.
 - **Skills**: Unter **+** stehen die Skills aus Open WebUI (z. B. EDU-KI: Arbeitsbereich → Skills). Eingeschaltet
   gelten sie für den Chat (als Chip über dem Eingabefeld, × schaltet aus): Ihr Text geht als Anweisung an das
   Modell, auch an Ollama oder DeepSeek. Ein Klick auf den Chip zeigt den Text.
 - Oben rechts: **Terminal** und **Dateien** (Code mit Syntaxfarben, bei HTML per Auge-Symbol Vorschau).
+- **Projekte** (neben „Neuer Chat“): **+ Neues Projekt** legt ein Projekt mit Namen an, ohne Ordner; Chats kommen über
+  **+ Neuer Chat hier** oder ⋯ → **In Projekt verschieben** hinein. Dazu erscheinen die Arbeitsordner, in denen Chats
+  laufen, von selbst als Projekte (ein Chat in einem benannten Projekt steht nur dort). Benannte Projekte lassen sich
+  über ⋯ umbenennen und löschen; die Chats bleiben dabei erhalten. Projekte speichert die App lokal, für alle Anbieter.
+  Bei EDU-KI-Chats merkt sie sich Ordner und Projekt selbst, weil Open WebUIs Chatliste beides nicht enthält.
 - **Seitenleiste**: **⋯** am Ende eines Chats (beim Darüberfahren) öffnet **Anpinnen** (oben unter „Angepinnt“),
   **Umbenennen** (auch per Doppelklick; Enter speichert, Esc bricht ab) und **Löschen**. Bei Open-WebUI-Chats gilt
   das auch in dessen Weboberfläche.
@@ -257,4 +266,5 @@ Der Server hört nur auf `127.0.0.1` und prüft Host und Origin, damit andere We
 Die Rückfrage ist der Schutz, also nur freigeben, was du verstehst. Die HTML-Vorschau läuft in einer Sandbox
 ohne Zugriff auf die App.
 
-Gebündelte Bibliotheken (`edu_ki_proxy/static/vendor/`): highlight.js (BSD-3-Clause), xterm.js (MIT).
+Gebündelte Bibliotheken (`edu_ki_proxy/static/vendor/`): highlight.js (BSD-3-Clause), xterm.js (MIT), marked (MIT),
+DOMPurify (Apache-2.0 oder MPL-2.0).

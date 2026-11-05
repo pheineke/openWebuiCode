@@ -21,6 +21,86 @@ def _dir() -> Path:
     return d
 
 
+def _write_json(p: Path, data) -> None:
+    tmp = p.with_suffix(".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(data, f, ensure_ascii=False)
+    tmp.replace(p)
+
+
+def _read_json(p: Path, default):
+    try:
+        d = json.loads(p.read_text())
+        return d if isinstance(d, type(default)) else default
+    except (OSError, ValueError):
+        return default
+
+
+# What the sidebar needs of chats kept by a provider (Open WebUI), which its chat list does not carry:
+# working folder and SSH connection (folder projects) and the named project. Key: "<provider id>/<chat id>".
+META_FIELDS = ("workdir", "conn", "project")
+
+
+def _meta_file() -> Path:
+    return auth.STATE_DIR / "chat-meta.json"
+
+
+def chat_meta() -> dict:
+    return _read_json(_meta_file(), {})
+
+
+def set_meta(key: str, **fields) -> None:
+    d = chat_meta()
+    entry = {**d.get(key, {}), **{k: (v or None) for k, v in fields.items() if k in META_FIELDS}}
+    if any(entry.values()):
+        d[key] = entry
+    elif key in d:
+        del d[key]
+    else:
+        return
+    _write_json(_meta_file(), d)
+
+
+# Named projects (no folder needed): a name; chats point to one with their "project" field.
+def _projects_file() -> Path:
+    return auth.STATE_DIR / "projects.json"
+
+
+def projects() -> list[dict]:
+    return [p for p in _read_json(_projects_file(), []) if isinstance(p, dict) and p.get("id")]
+
+
+def project_add(name: str) -> dict:
+    items = projects()
+    p = {"id": "p-" + secrets.token_hex(6), "name": name, "created_at": int(time.time())}
+    _write_json(_projects_file(), items + [p])
+    return p
+
+
+def project_update(pid: str, name: str) -> bool:
+    items = projects()
+    for p in items:
+        if p["id"] == pid:
+            p["name"] = name
+            _write_json(_projects_file(), items)
+            return True
+    return False
+
+
+def project_delete(pid: str) -> bool:
+    """The project only; its chats stay, without a project (references to it are ignored)."""
+    items = projects()
+    rest = [p for p in items if p["id"] != pid]
+    if len(rest) == len(items):
+        return False
+    _write_json(_projects_file(), rest)
+    for key, entry in chat_meta().items():   # provider chats that pointed to it
+        if entry.get("project") == pid:
+            set_meta(key, project=None)
+    return True
+
+
 def _path(cid: str) -> Path:
     if not ID_RE.fullmatch(cid or ""):
         raise ValueError("invalid chat id")
@@ -89,7 +169,8 @@ def list_all() -> list[dict]:
             continue
         out.append({"id": c.get("id") or f.stem, "title": c.get("title") or "Chat",
                     "updated_at": c.get("updated_at") or 0, "model": c.get("model"),
-                    "provider": c.get("provider"), "source": "local", "pinned": bool(c.get("pinned"))})
+                    "provider": c.get("provider"), "source": "local", "pinned": bool(c.get("pinned")),
+                    "workdir": c.get("workdir") or None, "conn": c.get("conn") or None, "project": c.get("project") or None})
     out.sort(key=lambda c: c["updated_at"], reverse=True)
     return out
 

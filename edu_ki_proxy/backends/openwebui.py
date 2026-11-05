@@ -133,6 +133,66 @@ class OpenWebUI(Backend):
             raise ProxyError("Skill nicht gefunden.", 404)
         return content
 
+    async def web_search_info(self, p: dict) -> dict | None:
+        try:
+            r = await self.get(p, "config")
+            features = (r.json() or {}).get("features") or {} if r.status_code == 200 else {}
+        except (httpx.HTTPError, ValueError, ProxyError):
+            return None
+        if not features.get("enable_web_search"):
+            return None
+        notice = features.get("web_search_confirmation_content") if features.get("enable_web_search_confirmation") else ""
+        return {"notice": str(notice or "")}
+
+    async def _post_json(self, p: dict, path: str, body: dict) -> httpx.Response:
+        resp, _ = await self.send(p, "POST", path, headers={"Content-Type": "application/json"},
+                                  content=json.dumps(body).encode())
+        return resp
+
+    async def web_search(self, p: dict, messages: list[dict], model: str | None) -> dict:
+        """Open WebUI's web search, the way its own web UI runs it for a message: queries from its task model,
+        the search (its configured engine), then the pages, either returned directly or from the vector store."""
+        question = next((m["content"] for m in reversed(messages) if m.get("role") == "user" and m.get("content")), "")
+        if not question.strip():
+            raise ProxyError("Keine Frage zum Suchen.", 400)
+        queries = [question.strip()[:300]]
+        if model:
+            try:
+                r = await self._post_json(p, "v1/tasks/queries/completions",
+                                          {"model": model, "messages": messages, "prompt": question, "type": "web_search"})
+                text = r.json()["choices"][0]["message"]["content"] if r.status_code == 200 else ""
+                found = json.loads(text[text.rfind("{"):text.rfind("}") + 1]).get("queries") if "{" in text else None
+                if isinstance(found, list) and any(isinstance(q, str) and q.strip() for q in found):
+                    queries = [q.strip() for q in found if isinstance(q, str) and q.strip()][:3]
+            except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError, AttributeError, ProxyError):
+                pass                       # query generation is a nicety: the question itself works too
+        r = await self._post_json(p, "v1/retrieval/process/web/search", {"queries": queries})
+        if r.status_code == 404:
+            raise ProxyError("Die Websuche hat nichts gefunden.", 404)
+        if r.status_code != 200:
+            try:
+                detail = (r.json() or {}).get("detail")
+            except ValueError:
+                detail = None
+            raise ProxyError(f"Websuche fehlgeschlagen: {detail or 'HTTP ' + str(r.status_code)}", 502 if r.status_code >= 500 else 400)
+        d = r.json() or {}
+        titles = {i.get("link"): i.get("title") for i in d.get("items") or [] if isinstance(i, dict)}
+        docs = d.get("docs")
+        if docs is None and d.get("collection_names"):
+            r = await self._post_json(p, "v1/retrieval/query/collection",
+                                      {"collection_names": d["collection_names"], "query": question, "k": 8})
+            q = r.json() if r.status_code == 200 else {}
+            docs = [{"content": c, "metadata": m or {}} for c, m in zip((q.get("documents") or [[]])[0], (q.get("metadatas") or [[]])[0])]
+        results: dict[str, dict] = {}               # one entry per page, its pieces joined
+        for doc in docs or []:
+            meta = doc.get("metadata") or {}
+            url = meta.get("source") or meta.get("link")
+            if not url or not str(doc.get("content") or "").strip():
+                continue
+            entry = results.setdefault(url, {"title": meta.get("title") or titles.get(url) or url, "url": url, "content": ""})
+            entry["content"] = (entry["content"] + "\n…\n" + doc["content"].strip()).strip("\n…") [:4000]
+        return {"queries": queries, "results": list(results.values())[:8]}
+
     async def model_icon(self, p: dict, model: str) -> tuple[bytes, str] | None:
         """The picture Open WebUI shows for a model (newer versions serve it separately, not in /models)."""
         try:

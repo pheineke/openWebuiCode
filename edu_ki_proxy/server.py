@@ -229,6 +229,27 @@ async def health():
     return {"ok": True}
 
 
+@app.get("/app/websearch")
+async def web_search_providers():
+    """Logged-in providers that can search the web (Open WebUI with web search on), with the notice to confirm."""
+    async def one(p: dict) -> list[dict]:
+        info = await backends.of(p).web_search_info(p)
+        return [{"provider": p["id"], "provider_name": p.get("name"), "notice": info.get("notice") or ""}] if info else []
+    out: list[dict] = []
+    for items in await _each([p for p in providers.load() if providers.logged_in(p)], one):
+        out += items
+    return {"providers": out}
+
+
+@app.post("/app/websearch")
+async def web_search(req: dict):
+    """Search for the conversation's last question; the app hands the results to whichever model answers."""
+    p = _logged_in(_provider(str(req.get("provider") or "")))
+    msgs = [{"role": m.get("role"), "content": str(m.get("content") or "")[:6000]}
+            for m in (req.get("messages") or [])[-8:] if isinstance(m, dict) and m.get("role") in ("user", "assistant")]
+    return await backends.of(p).web_search(p, msgs, req.get("model") or None)
+
+
 @app.get("/app/skills")
 async def skill_list():
     """Skills of all logged-in providers (Open WebUI workspaces), for the composer's + menu."""
@@ -278,7 +299,7 @@ async def status():
             break
     default = providers.default()
     return {"logged_in": bool(logged), "providers": providers.all_public(), "user": user,
-            "default": default["id"] if default else None, "debug": trace.on()}
+            "default": default["id"] if default else None, "debug": trace.on(), "home": str(Path.home())}
 
 
 @app.get("/app/providers")
@@ -390,7 +411,10 @@ def install_session(pid: str, state: dict) -> None:
 @app.get("/app/chats")
 async def chat_list():
     out = chats.list_all()
+    known = chats.chat_meta()                # their folders and projects, for the sidebar's projects
     for items in await _each(_history_providers(), lambda p: backends.of(p).chat_list(p)):
+        for c in items:
+            c.update({k: v for k, v in known.get(f"{c.get('provider')}/{c.get('id')}", {}).items() if k in chats.META_FIELDS})
         out += items
     out.sort(key=lambda c: c.get("updated_at") or 0, reverse=True)
     return {"chats": out[:300]}
@@ -448,15 +472,22 @@ async def chat_update(cid: str, req: dict, provider: str | None = None):
             raise ProxyError("Der Name darf nicht leer sein.", 400)
     if "pinned" in req:
         fields["pinned"] = bool(req["pinned"])
+    if "project" in req:
+        fields["project"] = str(req.get("project") or "") or None
     if not fields:
         raise ProxyError("Nichts zu ändern.", 400)
     if cid.startswith("local-"):
         if not chats.update(cid, **fields):
             raise ProxyError("Chat nicht gefunden.", 404)
         return {"ok": True, **fields}
+    if set(fields) == {"project"} and provider and providers.get(provider):     # kept by the app, not the provider
+        chats.set_meta(f"{provider}/{cid}", project=fields["project"])
+        return {"ok": True, **fields}
     for p in _chat_candidates(provider):
         b = backends.of(p)
         try:
+            if "project" in fields:
+                chats.set_meta(f"{p['id']}/{cid}", project=fields["project"])
             if "title" in fields:
                 await b.chat_rename(p, cid, fields["title"])
             if "pinned" in fields:
@@ -467,6 +498,46 @@ async def chat_update(cid: str, req: dict, provider: str | None = None):
     raise ProxyError("Chat nicht gefunden.", 404)
 
 
+@app.post("/app/chats/{cid}/meta")
+async def chat_meta(cid: str, req: dict, provider: str = ""):
+    """Folder, connection and project of a chat kept by a provider (its chat list does not say), for the sidebar."""
+    if cid.startswith("local-") or not chats.ID_RE.fullmatch(cid) or not providers.get(provider):
+        raise ProxyError("Nur für Chats eines Anbieters.", 400)
+    chats.set_meta(f"{provider}/{cid}", **{k: str(req.get(k) or "") or None for k in chats.META_FIELDS if k in req})
+    return {"ok": True}
+
+
+@app.get("/app/projects")
+async def project_list():
+    return {"projects": chats.projects()}
+
+
+def _project_name(req: dict) -> str:
+    name = " ".join(str(req.get("name") or "").split())[:120]
+    if not name:
+        raise ProxyError("Das Projekt braucht einen Namen.", 400)
+    return name
+
+
+@app.post("/app/projects")
+async def project_add(req: dict):
+    return {"project": chats.project_add(_project_name(req))}
+
+
+@app.patch("/app/projects/{pid}")
+async def project_update(pid: str, req: dict):
+    if not chats.project_update(pid, _project_name(req)):
+        raise ProxyError("Projekt nicht gefunden.", 404)
+    return {"ok": True}
+
+
+@app.delete("/app/projects/{pid}")
+async def project_delete(pid: str):
+    if not chats.project_delete(pid):
+        raise ProxyError("Projekt nicht gefunden.", 404)
+    return {"ok": True}
+
+
 @app.delete("/app/chats/{cid}")
 async def chat_delete(cid: str, provider: str | None = None):
     if cid.startswith("local-"):
@@ -475,6 +546,7 @@ async def chat_delete(cid: str, provider: str | None = None):
     for p in _chat_candidates(provider):
         try:
             await backends.of(p).chat_delete(p, cid)
+            chats.set_meta(f"{p['id']}/{cid}", workdir=None, conn=None, project=None)
             return {"ok": True}
         except ProxyError:
             continue
