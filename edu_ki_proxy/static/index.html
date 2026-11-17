@@ -564,12 +564,12 @@ select.plain option{background:var(--panel);color:var(--text)}
 .sr{padding:8px 10px;border-radius:8px;cursor:pointer;display:flex;align-items:baseline;gap:14px}
 .sr .srm{flex:1;min-width:0}
 .sr time{flex:none;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}   /* the date, at the far right */
-.sqrow{display:flex;gap:8px}
-.sqrow #sq{flex:1;min-width:0}
-.sfbtn{flex:none;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--bg);color:var(--muted);border-radius:8px;padding:0 11px;font-size:13px}
+.sqrow{position:relative;display:flex}                      /* the filter button sits inside the field, at its end */
+.sqrow #sq{flex:1;min-width:0;padding-right:46px}
+.sfbtn{position:absolute;right:5px;top:50%;transform:translateY(-50%);display:inline-flex;align-items:center;gap:6px;border:0;background:none;color:var(--muted);border-radius:6px;padding:5px 8px;font-size:13px}
 .sfbtn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linejoin:round}
-.sfbtn:hover,.sfbtn.open{border-color:var(--accent);color:var(--text)}
-.sfbtn.on{color:var(--accent);border-color:var(--accent)}
+.sfbtn:hover,.sfbtn.open{background:var(--side);color:var(--text)}
+.sfbtn.on{color:var(--accent)}
 .sfbtn span:empty{display:none}
 .sfrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px}
 .sfrow[hidden]{display:none}
@@ -1696,6 +1696,7 @@ function renderFilter() {
   const b = rangeBounds();
   $("sfBtn").classList.toggle("on", !!b);
   $("sfLbl").textContent = !b ? "" : sRange === "custom" ? `${dm($("sfFrom").value)}–${dm($("sfTo").value)}` : RANGES.find(r => r[0] === sRange)[1];
+  $("sq").style.paddingRight = $("sfBtn").offsetWidth + 14 + "px";     // the typed text stops before the button and its label
 }
 $("sfBtn").onclick = () => { $("sfRow").hidden = !$("sfRow").hidden; $("sfBtn").classList.toggle("open", !$("sfRow").hidden); renderFilter(); $("sq").focus(); };
 $("sfSeg").onclick = e => {
