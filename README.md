@@ -137,9 +137,13 @@ Anmeldebildschirm; Hochschule und Benutzername sind dann schon eingetragen. Abme
   das ein Codeblock mit der Sprache `card`. Die Karte läuft abgeschottet: ohne JavaScript, ohne Formulare und ohne
   Zugriff aufs Netz (auch Bilder und Schriften von außen werden blockiert), und sie übernimmt die Farben des Themes.
   Oben rechts auf der Karte: HTML anzeigen und kopieren.
-- **Skills**: Unter **+** stehen die Skills aus Open WebUI (z. B. EDU-KI: Arbeitsbereich → Skills). Eingeschaltet
-  gelten sie für den Chat (als Chip über dem Eingabefeld, × schaltet aus): Ihr Text geht als Anweisung an das
-  Modell, auch an Ollama oder DeepSeek. Ein Klick auf den Chip zeigt den Text.
+- **Skills**: Unter **+** → **Skills** stehen deine eigenen Skills und die aus Open WebUI (z. B. EDU-KI:
+  Arbeitsbereich → Skills). Eingeschaltet gelten sie für den Chat (als Chip über dem Eingabefeld, × schaltet aus):
+  Ihr Text geht als Anweisung an das Modell, an jedes, auch an Ollama. Ein Klick auf den Chip zeigt den Text.
+  Eigene Skills legst du in der Seitenleiste unter **Skills** an (oder **+** → Skills → **Skills verwalten…**): Name,
+  Kurzbeschreibung, Anweisungen und Dateien (Markdown, Text, Code, PDF, Word, PowerPoint, OpenDocument, auch per
+  Ziehen), deren Text als Kontext mitgeht. Die App speichert sie lokal unter `~/.config/edu-ki-proxy/skills/`
+  (nur den Text der Dateien, nicht die Originale). Skills aus Open WebUI lassen sich dort nur ansehen.
 - Oben rechts: **Terminal** und **Dateien** (Code mit Syntaxfarben, bei HTML per Auge-Symbol Vorschau).
 - **Projekte** (neben „Neuer Chat“): **+ Neues Projekt** legt ein Projekt mit Namen an, ohne Ordner; Chats kommen über
   **+ Neuer Chat hier** oder ⋯ → **In Projekt verschieben** hinein. Dazu erscheinen die Arbeitsordner, in denen Chats

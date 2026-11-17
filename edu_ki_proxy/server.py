@@ -27,7 +27,7 @@ from fastapi.staticfiles import StaticFiles
 
 from pydantic import BaseModel
 
-from . import auth, backends, chats, extract, providers, remote, sandbox, shibboleth, tools, trace, updater, usage
+from . import auth, backends, chats, extract, providers, remote, sandbox, shibboleth, skills, tools, trace, updater, usage
 from .backends import ProxyError, emulate, openwebui
 
 
@@ -263,10 +263,11 @@ async def web_search(req: dict):
 
 @app.get("/app/skills")
 async def skill_list():
-    """Skills of all logged-in providers (Open WebUI workspaces), for the composer's + menu."""
+    """The user's own skills, then those of all logged-in providers (Open WebUI workspaces), for the
+    composer's + menu and the skills view."""
     async def one(p: dict) -> list[dict]:
         return [{**s, "provider": p["id"], "provider_name": p.get("name")} for s in await backends.of(p).skills(p)]
-    out: list[dict] = []
+    out: list[dict] = [{**s, "provider": skills.PROVIDER, "provider_name": "Eigene"} for s in skills.list_all()]
     for items in await _each([p for p in providers.load() if providers.logged_in(p)], one):
         out += items
     return {"skills": out}
@@ -274,8 +275,56 @@ async def skill_list():
 
 @app.get("/app/skills/{pid}/{sid}")
 async def skill_get(pid: str, sid: str):
+    if pid == skills.PROVIDER:
+        text = skills.content(sid)
+        if text is None:
+            raise ProxyError("Skill nicht gefunden.", 404)
+        return {"content": text}
     p = _logged_in(_provider(pid))
     return {"content": await backends.of(p).skill(p, sid)}
+
+
+# ---- the user's own skills (skills.py): instructions and the text of files ----------------------
+@app.get("/app/local-skills/{sid}")
+async def local_skill_get(sid: str):
+    s = skills.get(sid)
+    if not s:
+        raise ProxyError("Skill nicht gefunden.", 404)
+    return {"skill": s}
+
+
+@app.get("/app/local-skills/{sid}/files/{fid}")
+async def local_skill_file(sid: str, fid: str):
+    text = skills.file_text(sid, fid)
+    if text is None:
+        raise ProxyError("Datei nicht gefunden.", 404)
+    return {"text": text}
+
+
+def _skill_save(sid: str | None, req: dict) -> dict:
+    try:
+        return {"skill": skills.save(sid, req)}
+    except ValueError as e:
+        raise ProxyError(str(e), 400) from e
+    except KeyError as e:
+        raise ProxyError("Skill nicht gefunden.", 404) from e
+
+
+@app.post("/app/local-skills")
+async def local_skill_add(req: dict):
+    return await asyncio.to_thread(_skill_save, None, req)
+
+
+@app.put("/app/local-skills/{sid}")
+async def local_skill_put(sid: str, req: dict):
+    return await asyncio.to_thread(_skill_save, sid, req)
+
+
+@app.delete("/app/local-skills/{sid}")
+async def local_skill_delete(sid: str):
+    if not skills.delete(sid):
+        raise ProxyError("Skill nicht gefunden.", 404)
+    return {"ok": True}
 
 
 _icons: dict[tuple[str, str], tuple[bytes, str] | None] = {}    # (provider, model) -> picture, or None: has none

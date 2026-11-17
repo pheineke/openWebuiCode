@@ -63,9 +63,10 @@ html.sb-collapsed #topbar{padding-left:10px}
 .new{margin:0 12px 10px;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--panel);text-align:left;font-weight:550}
 .new:hover{border-color:var(--accent)}
 #chats{flex:1;overflow:auto;padding:0 8px}
-.newrow{display:flex;gap:8px;margin:0 12px 10px}
-.newrow .new{margin:0;flex:1;min-width:0}
-.newrow .projbtn{flex:none;display:inline-flex;align-items:center;gap:7px;cursor:pointer}
+.newrow{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:0 12px 6px}   /* Projekte | Skills, then Neuer Chat */
+.newrow .wide{grid-column:1/-1}
+.newrow .new{margin:0;min-width:0}
+.newrow .projbtn{display:flex;align-items:center;gap:9px;cursor:pointer;padding:5px 10px;font-size:14px;border-radius:8px}
 .newrow .projbtn.on{border-color:var(--accent);color:var(--accent)}
 .projbtn svg,.chat .pico svg,.sideback svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;display:block}
 /* projects: the sidebar lists working folders, then one folder's chats */
@@ -374,6 +375,43 @@ form textarea{min-width:0}
 .att .rm:hover{color:var(--text)}
 .att.busy{opacity:.6}
 .att.err{border-color:var(--danger)}
+/* skills view: the user's own skills (editable) and the providers' (read only) */
+.sknav{width:250px;flex:none;border-right:1px solid var(--line);padding:18px 10px;background:var(--side);display:flex;flex-direction:column;overflow:auto}
+.sknav h4{margin:0 8px 10px;font-size:12px;font-weight:500;color:var(--muted)}
+.sknav .projnew{width:100%;margin:0 0 6px}
+.sklbl{margin:12px 10px 4px;font-size:11.5px;color:var(--muted)}
+.skitem{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;cursor:pointer;color:var(--muted);font-size:14px}
+.skitem svg,.sktitle svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.skitem span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.skitem:hover{background:var(--panel);color:var(--text)}
+.skitem.act{background:var(--panel);color:var(--text);box-shadow:inset 2px 0 0 var(--accent)}
+.skitem small{font-size:11px;color:var(--muted)}
+.sknote{padding:6px 10px;color:var(--muted);font-size:12.5px;line-height:1.45}
+.sked{display:flex;flex-direction:column;gap:16px;max-width:720px}
+.sked label{display:flex;flex-direction:column;gap:5px;font-weight:550;font-size:13px}
+.sked label small,.skhint{font-weight:400;color:var(--muted);font-size:12.5px;line-height:1.45}
+.sked input,.sked textarea{font:inherit;font-size:14px;font-weight:400;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;outline:none}
+.sked textarea{min-height:200px;resize:vertical;font:13px/1.55 ui-monospace,Menlo,Consolas,monospace}
+.sked input:focus,.sked textarea:focus{border-color:var(--accent)}
+.skfhead{display:flex;align-items:baseline;gap:10px;font-weight:550;font-size:13px}
+.skfhead small{font-weight:400;color:var(--muted)}
+.skfiles{display:flex;flex-wrap:wrap;gap:10px;padding:12px;border:1px dashed var(--line);border-radius:12px;min-height:62px;align-items:center}
+.skfiles .att{max-width:300px}
+.skfiles .add{border:0;background:none;color:var(--muted);font-size:13px;padding:6px 8px;border-radius:8px}
+.skfiles .add:hover{color:var(--accent);background:var(--side)}
+body.dropping #skills .skfiles{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 6%,transparent)}
+.skfoot{display:flex;gap:8px;align-items:center;justify-content:flex-end;position:sticky;bottom:-28px;margin:0 0 -28px;padding:12px 0 20px;background:var(--panel);border-top:1px solid var(--line)}   /* always in view */
+.skfoot .sp{flex:1}
+.skfoot button{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:7px 14px}
+.skfoot button.ok{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:600}
+.skfoot button.ok:disabled{opacity:.5;cursor:default}
+.skfoot button.del{color:var(--danger)}
+.skfoot .state{font-size:12.5px;color:var(--muted)}
+.sktitle{display:flex;align-items:center;gap:8px;margin:0 0 4px}
+.sktitle h2{margin:0}
+.skview pre{margin:0;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:14px;white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.5 ui-monospace,Menlo,Consolas,monospace;max-height:none}
+.skempty{color:var(--muted);font-size:14px;line-height:1.6;max-width:560px}
+.skempty b{color:var(--text);font-weight:550}
 .att.err small{color:var(--danger)}
 .msg.user .atts{justify-content:flex-end;align-items:flex-start;max-width:85%;margin-bottom:6px}
 .msg .shot{max-width:min(320px,100%);max-height:240px;border-radius:12px;border:1px solid var(--line);cursor:zoom-in;display:block}
@@ -549,7 +587,11 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
 <body>
 <aside>
   <div class="brand"><span>EDU-KI Code</span><button class="tbtn" id="sbToggle" type="button" title="Seitenleiste einklappen"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button></div>
-  <div class="newrow"><button class="new" id="new">+ Neuer Chat</button><button class="new projbtn" id="projBtn" title="Projekte: Chats nach Arbeitsordner"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Projekte</button></div>
+  <div class="newrow">
+    <button class="new projbtn" id="projBtn" title="Projekte: Chats nach Projekt und Arbeitsordner"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Projekte</button>
+    <button class="new projbtn" id="skillsBtn" title="Skills: Anweisungen und Dateien, die du in Chats einschalten kannst"><svg viewBox="0 0 24 24"><path d="M11 4l1.9 5.1L18 11l-5.1 1.9L11 18l-1.9-5.1L4 11l5.1-1.9z"/><path d="M18.5 3v4M16.5 5h4"/></svg>Skills</button>
+    <button class="new projbtn wide" id="new" title="Neuer Chat"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Neuer Chat</button>
+  </div>
   <div id="chats"></div>
   <div class="me">
     <div class="umenu" id="userMenu">
@@ -619,6 +661,12 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
     <div class="slogout" id="logout" title="Bei allen Anbietern abmelden">Abmelden</div></div>
   <div class="scont" id="scont"></div>
   <button class="sx" id="sclose" title="Schließen"><svg class="xm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+</div></div>
+<div class="overlay" id="skills"><div class="sbig">
+  <div class="sknav"><h4>Skills</h4><button class="projnew" id="skNew" type="button">+ Neuer Skill</button><div id="skList"></div></div>
+  <div class="scont" id="skCont"></div>
+  <button class="sx" id="skClose" title="Schließen"><svg class="xm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  <input type="file" id="skFileIn" multiple hidden>
 </div></div>
 <div class="overlay" id="lightbox"><div class="lbox"></div></div>
 <div class="menu" id="chatMenu"></div>
@@ -1448,7 +1496,7 @@ $("search").onclick = e => { if (e.target === $("search")) closeSearch(); };
 document.addEventListener("keydown", e => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("search").classList.contains("on") ? closeSearch() : openSearch(); }
   else if ((e.ctrlKey || e.metaKey) && e.key === ",") { e.preventDefault(); openSettings(); }
-  else if (e.key === "Escape") { closeChatMenu(); $("lightbox").classList.remove("on"); closeSearch(); closeSettings(); $("sshModal").classList.remove("on"); document.querySelectorAll(".menu.on, .umenu.on").forEach(m => m.classList.remove("on")); $("userMenu").classList.remove("on"); $("picker").classList.remove("on"); }
+  else if (e.key === "Escape") { if (!$("lightbox").classList.contains("on") && !$("search").classList.contains("on")) closeSkills(); closeChatMenu(); $("lightbox").classList.remove("on"); closeSearch(); closeSettings(); $("sshModal").classList.remove("on"); document.querySelectorAll(".menu.on, .umenu.on").forEach(m => m.classList.remove("on")); $("userMenu").classList.remove("on"); $("picker").classList.remove("on"); }
 });
 
 function newChat(reload = true) {
@@ -2452,7 +2500,8 @@ $("log").addEventListener("click", e => {
   if (el) showAttachment(branch().flatMap(m => m.attachments || []).find(a => a.id === el.dataset.att));
 });
 // ---- + menu: attach files, and tools to switch on, such as skills -------------------------
-// A skill is a set of instructions from the provider's workspace (Open WebUI: Arbeitsbereich -> Skills).
+// A skill is a set of instructions: the user's own (Skills view, with files) or from the provider's workspace
+// (Open WebUI: Arbeitsbereich -> Skills).
 // Switched on for a chat, its text goes into the system prompt of every request, for any model.
 const CLIP = '<svg viewBox="0 0 24 24"><path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>';
 const SPARK = '<svg viewBox="0 0 24 24"><path d="M11 4l1.9 5.1L18 11l-5.1 1.9L11 18l-1.9-5.1L4 11l5.1-1.9z"/><path d="M18.5 3v4M16.5 5h4"/></svg>';
@@ -2475,12 +2524,14 @@ async function skillContent(s) {
 function skillItemsHtml() {                // the Skills submenu
   const on = new Set((chat.skills || []).map(skillKey)), many = new Set((skillList || []).map(s => s.provider)).size > 1;
   if (skillList === null) return '<span class="pm-note">Lädt…</span>';
-  if (!skillList.length) return '<span class="pm-note">Keine Skills. Sie kommen aus Open WebUI (z. B. EDU-KI), dort unter Arbeitsbereich → Skills.</span>';
+  const manage = `<div class="item" data-plus="manage"><span class="mrow"><i class="mi">${PEN}</i><span>Skills verwalten…`
+    + `<small class="d">Eigene anlegen: Anweisungen und Dateien</small></span></span></div>`;
+  if (!skillList.length) return '<span class="pm-note">Noch keine Skills. Lege eigene an; die aus Open WebUI (z. B. EDU-KI) stehen hier auch.</span>' + manage;
   return '<span class="lbl">Für diesen Chat einschalten</span>' + skillList.map(s => `<div class="item" data-skill="${esc(skillKey(s))}"><span class="mrow"><i class="mi">${SPARK}</i>`
     + `<span>${esc(s.name)}${many ? ` <small>· ${esc(s.provider_name || s.provider)}</small>` : ""}<small class="d">${esc(shorten(s.description || "", 160))}</small></span></span>`
-    + `${on.has(skillKey(s)) ? '<span class="ck">✓</span>' : ""}</div>`).join("");
+    + `${on.has(skillKey(s)) ? '<span class="ck">✓</span>' : ""}</div>`).join("") + manage;
 }
-const skillsSummary = () => { const n = (chat.skills || []).length; return n ? `${n} aktiv in diesem Chat` : "Anweisungen aus Open WebUI"; };
+const skillsSummary = () => { const n = (chat.skills || []).length; return n ? `${n} aktiv in diesem Chat` : "Eigene und aus Open WebUI"; };
 function plusMenuHtml() {
   return `<div class="item" data-plus="file"><span class="mrow"><i class="mi">${CLIP}</i><span>Datei oder Bild anhängen`
     + `<small class="d">Auch per Ziehen ins Fenster oder Einfügen (Strg+V)</small></span></span></div>`
@@ -2516,6 +2567,7 @@ $("plusMenu").addEventListener("mouseover", e => { if (e.target.closest(".has-fl
 $("plusMenu").onclick = e => {
   const it = e.target.closest(".item"); if (!it) return;
   if (it.dataset.plus === "file") { $("plusMenu").classList.remove("on"); return pickFiles(); }
+  if (it.dataset.plus === "manage") return openSkills();
   if (it.dataset.plus === "skills") { it.classList.toggle("open"); return fitSkillFly(); }   // click (or hover) opens the submenu
   if (it.dataset.plus === "web") { if (!it.classList.contains("off")) toggleWebSearch(!chat.webSearch); return; }
   if (it.dataset.plus === "cards") return toggleCards(it);
@@ -2537,6 +2589,194 @@ $("skillChips").onclick = async e => {
   const chip = e.target.closest(".skchip"), s = chip && (chat.skills || []).find(x => skillKey(x) === chip.dataset.sk);
   if (s) { try { showLightbox(`<div class="lhead">Skill: ${esc(s.name)}</div><pre>${esc(await skillContent(s))}</pre>`); } catch (err) { notice("Skill nicht verfügbar", errMsg(err)); } }
 };
+
+// ---- Skills view (sidebar → Skills): the user's own skills, kept by the server (skills.py), and the providers' ----
+// An own skill is instructions plus files. The files' text (PDF, Word … read as for attachments) goes with the
+// instructions into the system prompt of every chat that has the skill switched on.
+let skv = {key: null, draft: null, dirty: false, saving: false};   // key: skillKey of the open skill, "new", or null
+const LOCAL = "local";                      // the provider id of own skills (server: skills.PROVIDER)
+async function openSkills(key = null) {
+  $("plusMenu").classList.remove("on"); $("userMenu").classList.remove("on");
+  $("skills").classList.add("on");
+  renderSkillNav();
+  await loadSkills();
+  const known = k => k === "new" || (skillList || []).some(s => skillKey(s) === k);
+  await showSkill(key && known(key) ? key : skv.key && known(skv.key) ? skv.key : null, true);
+}
+async function leaveSkill() {               // may the open skill be left? (nothing unsaved, or the changes discarded)
+  if (!skv.dirty) return true;
+  return dialog({title: "Änderungen verwerfen?", text: `„${skv.draft.name.trim() || "Neuer Skill"}“ hat Änderungen, die nicht gespeichert sind.`,
+                 ok: "Verwerfen", danger: true});
+}
+async function closeSkills() {
+  if (!$("skills").classList.contains("on") || !await leaveSkill()) return;
+  skv = {key: skv.key === "new" ? null : skv.key, draft: null, dirty: false, saving: false};
+  $("skills").classList.remove("on");
+}
+async function showSkill(key, force = false) {
+  if (!force && key === skv.key) return;
+  if (!await leaveSkill()) return;
+  skv = {key, draft: null, dirty: false, saving: false};
+  renderSkillNav();
+  const box = $("skCont"), s = key && key !== "new" ? (skillList || []).find(x => skillKey(x) === key) : null;
+  if (!key || (key !== "new" && !s)) { skv.key = null; renderSkillNav(); return renderSkillEmpty(); }
+  if (key === "new") { skv.draft = {id: null, name: "", description: "", instructions: "", files: []}; return renderSkillEditor(); }
+  box.innerHTML = '<div class="pmsg">Lädt…</div>';
+  try {
+    if (s.provider === LOCAL) {
+      const d = (await api(`/app/local-skills/${enc(s.id)}`)).skill;
+      if (skv.key !== key) return;            // another one was picked meanwhile
+      skv.draft = {...d, files: d.files.map(f => ({...f, key: f.id}))};
+      renderSkillEditor();
+    } else {
+      const text = await skillContent(s);
+      if (skv.key === key) renderSkillView(s, text);
+    }
+  } catch (e) { if (skv.key === key) box.innerHTML = `<div class="pmsg err">${esc(errMsg(e))}</div>`; }
+}
+function renderSkillNav() {
+  const all = skillList || [], own = all.filter(s => s.provider === LOCAL);
+  const item = s => `<div class="skitem${skillKey(s) === skv.key ? " act" : ""}" data-sk="${esc(skillKey(s))}" title="${esc(s.description || s.name)}">`
+    + `${SPARK}<span>${esc(s.name)}</span>${s.files ? `<small>${s.files} ${s.files === 1 ? "Datei" : "Dateien"}</small>` : ""}</div>`;
+  let h = '<div class="sklbl">Eigene</div>';
+  if (skv.key === "new") h += `<div class="skitem act">${SPARK}<span>${esc((skv.draft && skv.draft.name.trim()) || "Neuer Skill")}</span></div>`;
+  h += own.map(item).join("") || (skv.key === "new" ? "" : `<div class="sknote">${skillList === null ? "Lädt…" : "Noch keine. Lege oben einen an."}</div>`);
+  const byProvider = new Map();
+  for (const s of all) if (s.provider !== LOCAL) {
+    if (!byProvider.has(s.provider)) byProvider.set(s.provider, {name: s.provider_name || s.provider, items: []});
+    byProvider.get(s.provider).items.push(s);
+  }
+  for (const {name, items} of byProvider.values()) h += `<div class="sklbl">${esc(name)} · nur ansehen</div>` + items.map(item).join("");
+  $("skList").innerHTML = h;
+}
+function renderSkillEmpty() {
+  $("skCont").innerHTML = `<h2>Skills</h2><div class="skempty">
+    <p>Ein <b>Skill</b> sagt dem Modell, wie es arbeiten soll: zum Beispiel wie es Code prüft, Quellen zitiert oder in welchem Stil es schreibt.
+    Dazu kannst du <b>Dateien</b> legen (Markdown, Text, Code, PDF, Word, PowerPoint, OpenDocument); ihr Text geht als Kontext mit.</p>
+    <p>Eingeschaltet wird ein Skill pro Chat, im Eingabefeld über <b>+</b> → <b>Skills</b>. Er gilt dann für jede Antwort in diesem Chat, mit jedem Modell.</p>
+    <p>Skills aus Open WebUI (z. B. EDU-KI, dort unter Arbeitsbereich → Skills) stehen links ebenfalls, solange du dort angemeldet bist. Hier kannst du sie ansehen.</p></div>`;
+}
+function renderSkillView(s, text) {         // a provider's skill: read only
+  $("skCont").innerHTML = `<div class="sked skview"><div><h2>${esc(s.name)}</h2>`
+    + `<p class="skhint" style="margin:6px 0 0">Aus ${esc(s.provider_name || s.provider)} (Open WebUI). Bearbeiten geht dort unter Arbeitsbereich → Skills.</p></div>`
+    + (s.description ? `<p style="margin:0">${esc(s.description)}</p>` : "") + `<pre>${esc(text)}</pre></div>`;
+}
+function renderSkillEditor() {
+  const d = skv.draft, isNew = !d.id;
+  $("skCont").innerHTML = `<div class="sked">
+    <h2>${isNew ? "Neuer Skill" : "Skill bearbeiten"}</h2>
+    <label>Name<input id="skName" maxlength="80" spellcheck="false" placeholder="z. B. Code-Review nach Lehrstuhl-Richtlinien"></label>
+    <label>Kurzbeschreibung <small>Optional. Steht im + Menü unter dem Namen.</small><input id="skDesc" maxlength="300" placeholder="Wofür der Skill da ist"></label>
+    <label>Anweisungen <small>Was das Modell tun soll, solange der Skill an ist. Sie gehen mit in den Systemprompt.</small>
+      <textarea id="skInstr" placeholder="z. B. Prüfe Änderungen nach den Richtlinien in den Dateien unten. Nenne jede Fundstelle als Datei:Zeile und schlage eine Korrektur vor."></textarea></label>
+    <div><div class="skfhead">Dateien <small id="skFSum"></small></div>
+      <p class="skhint" style="margin:4px 0 8px">Ihr Text geht als Kontext mit: Markdown, Text, Code, PDF, Word, PowerPoint, OpenDocument. Ziehen geht auch. Ein Klick zeigt den Text.</p>
+      <div class="skfiles" id="skFiles"></div></div>
+    <div class="skfoot">${isNew ? "" : '<button type="button" class="del" id="skDel">Löschen</button>'}<span class="sp"></span>
+      <span class="state" id="skState"></span><button type="button" id="skRevert">Verwerfen</button><button type="button" class="ok" id="skSave">Speichern</button></div>
+  </div>`;
+  $("skName").value = d.name; $("skDesc").value = d.description || ""; $("skInstr").value = d.instructions || "";
+  $("skName").oninput = () => { d.name = $("skName").value; skillDirty(true); if (isNew) renderSkillNav(); };
+  $("skDesc").oninput = () => { d.description = $("skDesc").value; skillDirty(true); };
+  $("skInstr").oninput = () => { d.instructions = $("skInstr").value; skillDirty(true); skillSum(); };
+  $("skSave").onclick = saveSkill;
+  $("skRevert").onclick = () => { skv.dirty = false; showSkill(isNew ? null : skv.key, true); };
+  if (!isNew) $("skDel").onclick = deleteSkill;
+  renderSkillFiles(); skillDirty(skv.dirty);
+  if (isNew) $("skName").focus();
+}
+function skillDirty(v) {
+  skv.dirty = v;
+  if (!$("skSave")) return;
+  $("skSave").disabled = skv.saving || (!v && !!skv.draft.id);
+  $("skSave").textContent = skv.saving ? "Speichert …" : "Speichern";
+  $("skRevert").hidden = !v && !!skv.draft.id;
+  $("skState").textContent = v ? "Nicht gespeichert" : "";
+}
+const skFileMeta = f => f.busy ? "wird gelesen…"
+  : [f.pages > 1 ? `${f.pages} ${/\.(pptx?|pptm|odp)$/i.test(f.name) ? "Folien" : "Seiten"}` : "", fmtTok(f.chars || 0)].filter(Boolean).join(" · ");
+function skillSum() {
+  const d = skv.draft; if (!d || !$("skFSum")) return;
+  const chars = d.files.reduce((n, f) => n + (f.chars || 0), 0) + (d.instructions || "").length;
+  $("skFSum").textContent = d.files.length ? `${d.files.length} ${d.files.length === 1 ? "Datei" : "Dateien"} · mit den Anweisungen ${fmtTok(chars)}` : "";
+}
+function renderSkillFiles() {
+  const d = skv.draft; if (!d || !$("skFiles")) return;
+  $("skFiles").innerHTML = d.files.map(f => {
+    const ext = (f.name.match(/\.([a-z0-9]{1,5})$/i) || [, "txt"])[1];
+    return `<div class="att${f.busy ? " busy" : ""}" data-f="${esc(f.key)}" data-text title="${esc(f.name)}"><span class="ic">${esc(ext)}</span>`
+      + `<span class="nm"><b>${esc(f.name)}</b><small>${esc(skFileMeta(f))}</small></span>`
+      + `<button type="button" class="rm" data-rmf="${esc(f.key)}" title="Entfernen">${XMARK}</button></div>`;
+  }).join("") + '<button type="button" class="add" id="skAdd">+ Dateien hinzufügen</button>';
+  skillSum();
+}
+async function addSkillFiles(files) {
+  if (!skv.draft) { if (skv.key) return; await showSkill("new"); }      // dropped on the overview: a new skill with them
+  const d = skv.draft; if (!d) return;
+  for (const file of files) {
+    const f = {key: uuid(), name: file.name || "Datei", size: file.size, busy: true};
+    d.files.push(f);
+    readAttachment(file).then(r => {
+      if (r.kind !== "text") throw new Error("Bilder gehen in Skills nicht, nur Text (auch aus PDF, Word …).");
+      Object.assign(f, {text: r.text, chars: r.text.length, pages: r.pages || 0});
+    }).catch(e => { d.files = d.files.filter(x => x !== f); notice(`„${f.name}“ nicht hinzugefügt`, errMsg(e)); })
+      .finally(() => { f.busy = false; if (skv.draft === d) renderSkillFiles(); });
+  }
+  renderSkillFiles(); skillDirty(true);
+}
+async function showSkillFile(f) {
+  if (!f || f.busy) return;
+  let text = f.text;
+  if (text == null) {
+    try { text = (await api(`/app/local-skills/${enc(skv.draft.id)}/files/${enc(f.id)}`)).text; }
+    catch (e) { return notice("Datei nicht lesbar", errMsg(e)); }
+  }
+  showLightbox(`<div class="lhead">${esc(f.name)}</div><pre>${esc(text)}</pre>`);
+}
+async function saveSkill() {
+  const d = skv.draft; if (!d || skv.saving) return;
+  if (!d.name.trim()) { $("skName").focus(); return notice("Name fehlt", "Unter seinem Namen steht der Skill im + Menü."); }
+  if (d.files.some(f => f.busy)) return notice("Dateien werden noch gelesen", "Einen Moment, dann noch einmal speichern.");
+  skv.saving = true; skillDirty(true);
+  const body = {name: d.name, description: d.description, instructions: d.instructions,
+    files: d.files.map(f => f.id ? {id: f.id} : {name: f.name, text: f.text, size: f.size, pages: f.pages})};
+  try {
+    const s = (await api(d.id ? `/app/local-skills/${enc(d.id)}` : "/app/local-skills", json(d.id ? "PUT" : "POST", body))).skill;
+    const key = skillKey({provider: LOCAL, id: s.id});
+    skillText.delete(key);                    // the next request fetches the new text
+    for (const x of (chat && chat.skills) || []) if (skillKey(x) === key) x.name = s.name;
+    renderSkillChips();
+    skv = {key, draft: {...s, files: s.files.map(f => ({...f, key: f.id}))}, dirty: false, saving: false};
+    await loadSkills(); renderSkillNav(); renderSkillEditor();
+  } catch (e) { skv.saving = false; skillDirty(true); notice("Nicht gespeichert", errMsg(e)); }
+}
+async function deleteSkill() {
+  const d = skv.draft;
+  if (!await dialog({title: "Skill löschen?", ok: "Löschen", danger: true,
+    text: `„${d.name}“ wird mit seinen Dateien gelöscht. Chats, in denen er eingeschaltet ist, laufen ohne ihn weiter.`})) return;
+  try { await api(`/app/local-skills/${enc(d.id)}`, {method: "DELETE"}); } catch (e) { return notice("Löschen fehlgeschlagen", errMsg(e)); }
+  const key = skillKey({provider: LOCAL, id: d.id});
+  skillText.delete(key);
+  if (chat && (chat.skills || []).some(x => skillKey(x) === key)) {
+    chat.skills = chat.skills.filter(x => skillKey(x) !== key); renderSkillChips();
+    if (chat.id) save().catch(() => {});
+  }
+  skv.dirty = false; await loadSkills(); showSkill(null, true);
+}
+$("skillsBtn").onclick = () => openSkills();
+$("new").onclick = () => newChat();
+$("skNew").onclick = () => showSkill("new");
+$("skClose").onclick = closeSkills;
+$("skills").onclick = e => { if (e.target === $("skills")) closeSkills(); };
+$("skList").onclick = e => { const it = e.target.closest(".skitem[data-sk]"); if (it) showSkill(it.dataset.sk); };
+$("skFileIn").onchange = () => { addSkillFiles([...$("skFileIn").files]); $("skFileIn").value = ""; };
+$("skCont").addEventListener("click", e => {
+  if (e.target.closest("#skAdd")) return $("skFileIn").click();
+  const rm = e.target.closest("[data-rmf]");
+  if (rm) { skv.draft.files = skv.draft.files.filter(f => f.key !== rm.dataset.rmf); renderSkillFiles(); return skillDirty(true); }
+  const el = e.target.closest("[data-f]");
+  if (el) showSkillFile(skv.draft.files.find(f => f.key === el.dataset.f));
+});
 // ---- web search: Open WebUI searches (its engine, e.g. you.com), the results go to whichever model answers ----
 const GLOBE = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/></svg>';
 let searchProviders = null;                 // [{provider, provider_name, notice}] (null: not asked yet)
@@ -2650,6 +2890,7 @@ document.addEventListener("dragover", e => { if (dragsFiles(e)) e.preventDefault
 document.addEventListener("drop", e => {
   if (!dragsFiles(e)) return;
   e.preventDefault(); dragDepth = 0; document.body.classList.remove("dropping");
+  if ($("skills").classList.contains("on")) return addSkillFiles([...e.dataTransfer.files]);   // into the open skill, not the chat
   addFiles([...e.dataTransfer.files]);
 });
 
@@ -2867,7 +3108,6 @@ $("input").onkeydown = e => {   // Enter sends; while an answer runs only the st
   if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (!streaming) $("form").requestSubmit(); }
 };
 $("input").oninput = () => { const t = $("input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 200) + "px"; };
-$("new").onclick = newChat;
 
 // ---- sync: pick up changes made elsewhere (web UI, other device) --------
 async function sync() {
