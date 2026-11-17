@@ -5,12 +5,35 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>EDU-KI Code</title>
 <script>
-// Appearance: theme mode + accent colour, stored per device. Runs before first paint to avoid a flash.
+// Appearance: theme mode, accent colour and chat background, stored per device. Runs before first paint to avoid a flash.
 const ACCENTS = {teal: ["#1f7a80", "#43aab1", "Teal"], blue: ["#2563eb", "#5b9bff", "Blau"], violet: ["#7c3aed", "#a78bfa", "Violett"],
   pink: ["#db2777", "#f472b6", "Rosa"], red: ["#dc2626", "#f87171", "Rot"], orange: ["#ea580c", "#fb923c", "Orange"],
   green: ["#16a34a", "#4ade80", "Grün"], yellow: ["#ca8a04", "#facc15", "Gelb"]};
+const APPEARANCE = {mode: "auto", accent: "teal", chatbg: "none"};
 function loadAppearance() {
-  try { return Object.assign({mode: "auto", accent: "teal"}, JSON.parse(localStorage.appearance || "{}")); } catch { return {mode: "auto", accent: "teal"}; }
+  try { return Object.assign({...APPEARANCE}, JSON.parse(localStorage.appearance || "{}")); } catch { return {...APPEARANCE}; }
+}
+// Chat backgrounds: a pattern behind the messages, drawn in the accent colour and faint enough that text stays
+// fully readable. Each is a 240 px tile; k scales its opacities (less on dark backgrounds, where colour glows more).
+const CHAT_BGS = {none: "Schlicht", bubbles: "Blasen"};
+function bubblesSvg(c, k) {
+  const o = v => +(v * k).toFixed(3);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240">`
+    + `<g fill="${c}" fill-opacity="${o(.05)}" stroke="${c}" stroke-opacity="${o(.16)}" stroke-width="1.2">`
+    + `<circle cx="0" cy="0" r="22"/><circle cx="240" cy="0" r="22"/><circle cx="0" cy="240" r="22"/><circle cx="240" cy="240" r="22"/>`
+    + `<circle cx="10" cy="125" r="18"/><circle cx="250" cy="125" r="18"/>`
+    + `<circle cx="75" cy="65" r="34"/><circle cx="145" cy="155" r="38"/><circle cx="92" cy="198" r="12"/></g>`
+    + `<g fill="none" stroke="${c}" stroke-opacity="${o(.18)}" stroke-width="1.2" stroke-linecap="round">`
+    + `<circle cx="130" cy="6" r="14"/><circle cx="130" cy="246" r="14"/>`
+    + `<circle cx="185" cy="70" r="24"/><circle cx="205" cy="185" r="19"/><circle cx="32" cy="205" r="10"/><circle cx="48" cy="145" r="7"/>`
+    + `<path d="M 227 232.5 A 15 15 0 0 1 236.1 225.5"/><path d="M 54.2 53 A 24 24 0 0 1 68.8 41.8"/>`
+    + `<path d="M 170.3 61.5 A 17 17 0 0 1 180.6 53.6"/><path d="M 121.6 141.5 A 27 27 0 0 1 138 128.9"/>`
+    + `<path d="M 193.7 178.5 A 13 13 0 0 1 201.6 172.4"/></g>`
+    + `<g fill="${c}" fill-opacity="${o(.09)}"><circle cx="118" cy="48" r="8"/><circle cx="65" cy="108" r="6"/><circle cx="168" cy="108" r="5"/></g></svg>`;
+}
+function chatPattern(kind, acc, mode) {
+  if (kind !== "bubbles") return "none";
+  return `url("data:image/svg+xml,${encodeURIComponent(bubblesSvg(acc, {light: .75, dark: .6, black: .55}[mode] || .75))}")`;
 }
 function resolvedMode(m) { return m === "auto" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : m; }
 function lightness(hex) {
@@ -28,6 +51,7 @@ function applyAppearance(a) {
   const acc = accentFor(a, dark);
   root.style.setProperty("--accent", acc);
   root.style.setProperty("--accent-fg", lightness(acc) > 0.19 ? "#101418" : "#ffffff");
+  root.style.setProperty("--chat-pattern", chatPattern(a.chatbg, acc, mode));     // follows the accent colour
   const bg = getComputedStyle(root).getPropertyValue("--bg").trim();
   try {   // tell the native window so its header bar matches the page (no-op in a normal browser)
     window.webkit.messageHandlers.shell.postMessage(JSON.stringify({bg, dark, mode: a.mode}));
@@ -169,7 +193,7 @@ table.um .n{text-align:right;font-variant-numeric:tabular-nums}
 .dot.act{border-color:var(--text)}
 .custom{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
 .custom input{width:30px;height:26px;border:0;background:none;padding:0;cursor:pointer}
-main{flex:1;display:flex;flex-direction:column;min-width:0}
+main{flex:1;display:flex;flex-direction:column;min-width:0;background-image:var(--chat-pattern,none);background-size:240px 240px}   /* stays put while the messages scroll */
 #log{flex:1;overflow:auto;padding:20px 0}
 .msg{max-width:820px;margin:0 auto;padding:6px 22px}
 .msg .who{font-size:12px;color:var(--muted);margin-bottom:2px}
@@ -1432,13 +1456,16 @@ function renderAppearance() {
       <div class="seg">${MODES.map(([k, l]) => `<button data-mode="${k}" class="${a.mode === k ? "act" : ""}">${l}</button>`).join("")}</div></div>
     <div class="srow"><div><b>Akzentfarbe</b><p>Wird für Schaltflächen, Links und Hervorhebungen verwendet.</p></div>
       <div class="sw">${Object.entries(ACCENTS).map(([k, v]) => `<button class="dot${a.accent === k ? " act" : ""}" data-acc="${k}" title="${v[2]}" style="background:${v[dark ? 1 : 0]}"></button>`).join("")}
-        <label class="custom" title="Eigene Farbe"><input type="color" id="accCustom" value="${custom ? a.accent : accentFor(a, dark)}">Eigene</label></div></div>`;
+        <label class="custom" title="Eigene Farbe"><input type="color" id="accCustom" value="${custom ? a.accent : accentFor(a, dark)}">Eigene</label></div></div>
+    <div class="srow"><div><b>Chat-Hintergrund</b><p>Ein dezentes Muster hinter den Nachrichten, in der Akzentfarbe.</p></div>
+      <div class="seg">${Object.entries(CHAT_BGS).map(([k, l]) => `<button data-chatbg="${k}" class="${a.chatbg === k ? "act" : ""}">${l}</button>`).join("")}</div></div>`;
   $("accCustom").oninput = e => { const a2 = {...loadAppearance(), accent: e.target.value}; try { localStorage.appearance = JSON.stringify(a2); } catch {} applyAppearance(a2); };
   $("accCustom").onchange = () => renderSettings();
 }
 $("scont").onclick = e => {
-  const m = e.target.closest("[data-mode]"), c = e.target.closest("[data-acc]");
+  const m = e.target.closest("[data-mode]"), c = e.target.closest("[data-acc]"), b = e.target.closest("[data-chatbg]");
   if (m) setAppearance({mode: m.dataset.mode}); else if (c) setAppearance({accent: c.dataset.acc});
+  else if (b) setAppearance({chatbg: b.dataset.chatbg});
 };
 window.onAppearance = () => {   // keep the terminal and the cards in step with the theme
   themeCards();
