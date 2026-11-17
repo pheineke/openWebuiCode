@@ -1,10 +1,9 @@
 """Provider backends by type.  Adding a service means adding one module here and registering it."""
 from .base import Backend, ProxyError
-from .deepseek import DeepSeek
 from .openai_compat import OpenAICompat
 from .openwebui import OpenWebUI
 
-BACKENDS: dict[str, Backend] = {b.type: b for b in (OpenWebUI(), DeepSeek(), OpenAICompat())}
+BACKENDS: dict[str, Backend] = {b.type: b for b in (OpenWebUI(), OpenAICompat())}
 
 
 def get(kind: str | None) -> Backend | None:

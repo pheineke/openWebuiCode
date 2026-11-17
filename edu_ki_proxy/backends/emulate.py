@@ -1,8 +1,7 @@
 """Tool calls for models that never see the request's tools.
 
-Some upstreams drop OpenAI ``tools`` on the way to the model (EDU-KI's Claude, for one), and
-DeepSeek's web chat has no tools at all.  For those the tools are described in the system
-prompt, the model answers with a fenced ```tool JSON block, and ToolStream turns that block
+Some upstreams drop OpenAI ``tools`` on the way to the model (EDU-KI's Claude, for one).
+For those the tools are described in the system prompt, the model answers with a fenced ```tool JSON block, and ToolStream turns that block
 back into OpenAI tool_calls, so the client cannot tell the difference.
 """
 import json
@@ -48,10 +47,10 @@ def tool_instruction(tools: list[dict]) -> str:
 
 
 # ---- tool-call stream filter -------------------------------------------------------------------
-# DeepSeek's own tool markup (DSML), which it falls back to now and then instead of a ```tool block:
+# DeepSeek models' own tool markup (DSML), which they fall back to now and then instead of a ```tool block:
 #   <｜DSML｜function_calls> <｜DSML｜invoke name="read_file">
 #   <｜DSML｜parameter name="path" string="true">main.py</｜DSML｜parameter> </｜DSML｜invoke> ...
-# The web chat writes the tags as "<｜｜DSML｜｜ calls>", so bars and spaces are matched loosely, and a
+# It also comes as "<｜｜DSML｜｜ calls>", so bars and spaces are matched loosely, and a
 # block is recognised by its first invoke: a garbled or missing calls tag does not matter.
 _DS = r"<\s*[｜|]+\s*DSML\s*[｜|]+\s*"
 _DSE = r"<\s*/\s*[｜|]+\s*DSML\s*[｜|]+\s*"

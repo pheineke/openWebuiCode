@@ -2,6 +2,5 @@ fastapi
 uvicorn
 websockets      # Terminal (WebSocket)
 httpx
-playwright      # Chromium-Login (DeepSeek, Ausweichweg) und stille Neuanmeldung
-wasmtime        # DeepSeek proof-of-work (DeepSeekHashV1)
+playwright      # Chromium-Login (Ausweichweg) und stille Neuanmeldung
 pypdf           # Text aus PDF-Anhängen

@@ -1,8 +1,8 @@
 # EDU-KI Code
 
 Desktop-App für KI-Chats mit mehreren Anbietern: Open WebUI hinter Shibboleth-Login (voreingestellt:
-EDU-KI-RLP), **DeepSeek Web** (chat.deepseek.com) und beliebige **OpenAI-kompatible APIs** (OpenAI,
-OpenRouter, Ollama, LM Studio, andere Open-WebUI-Instanzen). Du meldest dich bei einem oder mehreren
+EDU-KI-RLP) und beliebige **OpenAI-kompatible APIs** (OpenAI, OpenRouter, die DeepSeek-API, Ollama,
+LM Studio, andere Open-WebUI-Instanzen). Du meldest dich bei einem oder mehreren
 Anbietern an und wählst im Chat aus allen verfügbaren Modellen.
 
 Chat mit Modellauswahl, dazu ein Agent, der in einem Projektordner Dateien lesen und ändern und Befehle
@@ -25,7 +25,6 @@ Nach der Freigabe steht die Änderung als Zeile im Chat (`+53 −0` = hinzugefü
 ## Voraussetzungen
 
 - Linux mit Python 3 (getestet mit 3.14; ab 3.10 sollte es reichen)
-- `wasmtime` (wird mit den Requirements installiert) für den DeepSeek-Proof-of-Work
 - Für das App-Fenster: GTK 4, libadwaita, WebKitGTK 6 und PyGObject.
   - Fedora 43 (diese Pakete sind dort installiert): `sudo dnf install python3-gobject gtk4 libadwaita webkitgtk6.0`
   - Debian/Ubuntu (ab 24.04): `sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-webkit-6.0`
@@ -102,8 +101,6 @@ Beim ersten Start siehst du den Anmeldebildschirm mit allen eingerichteten Anbie
   anmelden** unter dem Formular nimmt den alten Weg über die Webseite im App-Fenster.
 - **Open WebUI ohne Shibboleth** meldet sich auf seiner Webseite im App-Fenster an. Der Knopf **Chromium**
   daneben nimmt stattdessen ein Chromium-Fenster.
-- **DeepSeek** meldet sich immer in einem Chromium-Fenster an, weil Google und Apple ihre Anmeldung in
-  eingebetteten Fenstern ablehnen. E-Mail/Telefon, Google und Apple funktionieren dort.
 
 Läuft eine Sitzung ab, meldet die App dich still neu an: nach einer Hochschul-Anmeldung über deine noch gültige
 Sitzung bei der Hochschule (ohne Passwort, solange die Hochschule dich kennt, meist einige Stunden), sonst mit
@@ -127,7 +124,7 @@ Anmeldebildschirm; Hochschule und Benutzername sind dann schon eingetragen. Abme
   gespeichert, wo er angelegt wurde.
 - **Anhänge**: **+** im Eingabefeld → „Datei oder Bild anhängen“, Dateien ins Fenster ziehen oder einfügen
   (**Strg+V**, z. B. ein Screenshot). Bilder gehen als Bild an das Modell (größere werden auf 1600 px verkleinert); das braucht ein
-  Modell mit Bildeingabe, DeepSeek (Web) kann keine Bilder. Text- und Code-Dateien sowie PDF, Word (`.docx`),
+  Modell mit Bildeingabe. Text- und Code-Dateien sowie PDF, Word (`.docx`),
   PowerPoint (`.pptx`) und OpenDocument (`.odt`, `.odp`) gehen als Text in die Nachricht. Gescannte PDFs ohne
   Textebene, Excel und alte `.doc`/`.ppt` gehen nicht; die App sagt dann, was stattdessen geht. Ein Klick auf
   einen Anhang zeigt, was das Modell davon bekommt.
@@ -173,25 +170,28 @@ Unter **Einstellungen → Anbieter** kannst du weitere Dienste hinzufügen:
 
 - **Open WebUI:** Basis-URL der Instanz. Mit Shibboleth davor meldest du dich im eigenen Formular der App an,
   sonst auf der Webseite im App-Fenster.
-- **DeepSeek (Web):** keine Basis-URL nötig; Anmeldung bei `chat.deepseek.com` im Chromium-Fenster.
-  Chatverläufe werden lokal gespeichert, Open-WebUI-Chats bleiben in Open WebUI. Die Seitenleiste zeigt beide
-  zusammen. DeepSeek hat keine offizielle Schnittstelle für das Web-Abo; die App spricht die internen Endpunkte
-  der Weboberfläche an. Das kann jederzeit brechen und verstößt womöglich gegen DeepSeeks Nutzungsbedingungen.
 - **OpenAI-kompatibel:** Basis-URL inkl. `/v1` und API-Schlüssel, z. B. OpenAI, OpenRouter, Gemini
-  (`https://generativelanguage.googleapis.com/v1beta/openai`) oder die DeepSeek-API. Für Ollama/LM Studio auf
-  `127.0.0.1` ist kein Schlüssel nötig. Modelle kannst du optional als Komma-Liste eintragen; sonst werden sie
-  über `GET /models` geladen. Ändert sich die Basis-URL, wird der gespeicherte Schlüssel verworfen.
+  (`https://generativelanguage.googleapis.com/v1beta/openai`) oder die DeepSeek-API (`https://api.deepseek.com/v1`).
+  Für Ollama/LM Studio auf `127.0.0.1` ist kein Schlüssel nötig. Modelle kannst du optional als Komma-Liste
+  eintragen; sonst werden sie über `GET /models` geladen. Ändert sich die Basis-URL, wird der gespeicherte
+  Schlüssel verworfen. Ihre Chats speichert die App lokal; Open-WebUI-Chats bleiben in Open WebUI. Die
+  Seitenleiste zeigt beide zusammen.
+
+Den früheren Anbieter **DeepSeek (Web)** gibt es nicht mehr: Er sprach die internen Endpunkte von
+`chat.deepseek.com` an, und DeepSeek sperrt Konten dafür. Beim ersten Start entfernt die App seinen Eintrag, sein
+Browserprofil und das Proof-of-Work-Modul; lokal gespeicherte Chats bleiben. DeepSeek geht weiter über die
+offizielle API (siehe oben).
 
 Im Chat stehen nur Modelle angemeldeter Anbieter zur Auswahl. Modelle heißen intern `<anbieter-id>/<modell>`,
-z. B. `eduki/qwen3.5-397b` oder `deepseek/deepseek-reasoner`. Alte Modellnamen ohne Präfix gehen weiter an den
+z. B. `eduki/qwen3.5-397b`. Alte Modellnamen ohne Präfix gehen weiter an den
 Standard-Anbieter.
 
 **Tools über den Prompt:** Manche Server reichen die Tools nicht an das Modell weiter. Bei EDU-KI betrifft das
 `claude-sonnet-5-rptu`: Claude antwortet dann mit Text wie „**Tool: execute_command**“, statt ein Tool
 aufzurufen. Trag solche Modell-IDs in der Anbieter-Karte unter **Tools über den Prompt** ein. Dann beschreibt
 der Proxy die Tools im Systemprompt und wandelt die ```` ```tool ````-Blöcke der Antwort in normale Tool-Aufrufe
-um (`backends/emulate.py`; DeepSeek arbeitet immer so, und falls DeepSeek doch sein eigenes DSML-Format
-schreibt, wird das ebenfalls erkannt). Ohne gewählten Ordner bekommen solche Modelle frühere Tool-Aufrufe im
+um (`backends/emulate.py`; schreibt ein DeepSeek-Modell stattdessen sein eigenes DSML-Format, wird das
+ebenfalls erkannt). Ohne gewählten Ordner bekommen solche Modelle frühere Tool-Aufrufe im
 Chat als Text.
 
 Das erkennt der Proxy auch selbst: Schreibt ein Modell einen Tool-Aufruf als Text (eine Zeile `Tool: list_dir`
@@ -201,7 +201,7 @@ für dieses Modell dabei, bis die App beendet wird. Dauerhaft geht das über den
 
 ### Aufbau
 
-Jeder Anbieter-Typ ist eine Klasse in `edu_ki_proxy/backends/` (`openwebui.py`, `deepseek.py`,
+Jeder Anbieter-Typ ist eine Klasse in `edu_ki_proxy/backends/` (`openwebui.py`,
 `openai_compat.py`) mit derselben Schnittstelle (`backends/base.py`): Login-Art, Sitzungsprüfung, Modelle,
 Chat im OpenAI-Format und optional ein eigener Chatverlauf. Server, App und CLI kennen nur diese
 Schnittstelle; ein neuer Anbieter ist eine neue Datei plus ein Eintrag in `backends/__init__.py`.
@@ -242,8 +242,7 @@ In einer `opencode.json` im Projektordner den Proxy als Anbieter eintragen (Mode
       "name": "Lokaler Proxy",
       "options": { "baseURL": "http://127.0.0.1:8787/v1", "apiKey": "unused" },
       "models": {
-        "eduki/qwen3.5-397b": { "name": "Qwen 3.5 397B" },
-        "deepseek/deepseek-reasoner": { "name": "DeepSeek R1" }
+        "eduki/qwen3.5-397b": { "name": "Qwen 3.5 397B" }
       }
     }
   }
@@ -252,7 +251,6 @@ In einer `opencode.json` im Projektordner den Proxy als Anbieter eintragen (Mode
 
 ```bash
 opencode -m proxy/eduki/qwen3.5-397b
-opencode -m proxy/deepseek/deepseek-reasoner
 ```
 
 Die Modell-ID im Proxy ist `<anbieter-id>/<modell>`; im opencode-Config ist der Schlüssel unter `models`
@@ -280,7 +278,7 @@ Andere Instanz: `EDU_KI_BASE=https://…`. Anderer Browser für den Chromium-Log
 
 - **Debug-Log**: `python3 -m edu_ki_proxy app --debug` (auch `serve --debug` oder `EDU_KI_DEBUG=1`) schreibt
   nach `~/.config/edu-ki-proxy/debug.log` (rotiert bei 10 MB). Pro Chat-Anfrage, unter einer gemeinsamen ID:
-  was die App schickt, der Prompt und die Rohdaten von DeepSeek, der vollständige Modelltext, was bei der App
+  was die App schickt, was an den Anbieter geht und von ihm kommt, der vollständige Modelltext, was bei der App
   ankommt, die ausgeführten Tools und die Fehler der App. Das Log enthält Prompts und Dateiinhalte, aber keine
   Sitzungsschlüssel, und ist darum nur auf Wunsch an.
 - **Port 8787 belegt** (App startet nicht): `fuser -k 8787/tcp`, dann neu starten.
@@ -292,13 +290,7 @@ Andere Instanz: `EDU_KI_BASE=https://…`. Anderer Browser für den Chromium-Log
 - **Fenster bleibt leer / 403**: Die App akzeptiert nur Anfragen von `127.0.0.1:<Port>`. Nicht über eine andere
   Adresse oder einen Proxy aufrufen.
 - **Modell antwortet nicht mit Werkzeugen**: nicht alle Modelle können das. `qwen3.5-397b` und
-  `deepseek-v4-flash` wurden getestet. DeepSeek-Web-Modelle bekommen Werkzeuge über den Prompt beigebracht.
-- **DeepSeek: „PoW-Modul konnte nicht geladen werden“**: die App lädt beim ersten Mal
-  `sha3_wasm_bg.7b9ca65ddd.wasm` von `fe-static.deepseek.com` und legt sie in `~/.config/edu-ki-proxy/` ab.
-  Ohne Internet diesen Schritt einmal mit Verbindung ausführen. Hat DeepSeek eine neue Version veröffentlicht
-  (Fehler 404 oder „unbekannte Schnittstelle“), die neue Adresse über `EDU_KI_DEEPSEEK_WASM=https://…` setzen.
-- **DeepSeek: „HTTP 403, Bot-Schutz“**: DeepSeeks CDN hat die Anfrage abgewiesen. Das ist keine abgelaufene
-  Sitzung; später erneut versuchen oder neu anmelden.
+  `deepseek-v4-flash` wurden getestet. Für Modelle, die keine Tools bekommen: **Tools über den Prompt** (oben).
 - **Google-Anmeldung meldet „Browser nicht sicher“**: per E-Mail/Telefon anmelden, oder mit
   `EDU_KI_BROWSER=/usr/bin/google-chrome` ein installiertes Chrome statt Chromium versuchen.
 

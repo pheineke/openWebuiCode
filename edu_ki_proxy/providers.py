@@ -54,9 +54,7 @@ def _models_list(models) -> list[str]:
 def _seed() -> list[dict]:
     """First run: the previous single-instance config (state.json) becomes the EDU-KI provider."""
     return [{"id": DEFAULT_ID, "type": "openwebui", "name": os.environ.get("EDU_KI_NAME", "EDU-KI-RLP"),
-             "base_url": auth.BASE, "session": auth.load_state(), "created_at": _now()},
-            {"id": "deepseek", "type": "deepseek", "name": "DeepSeek",
-             "base_url": "https://chat.deepseek.com", "session": None, "created_at": _now()}]
+             "base_url": auth.BASE, "session": auth.load_state(), "created_at": _now()}]
 
 
 def _signature() -> tuple | None:
@@ -82,7 +80,27 @@ def _read() -> list[dict]:
         data = _seed()
         _write(data)
         return data
+    if any(isinstance(p, dict) and p.get("type") in REMOVED_TYPES for p in data):
+        return _drop_removed(data)
     _cache = (sig, data)
+    return data
+
+
+# Provider types the app no longer has. "deepseek" spoke to chat.deepseek.com's internal endpoints, which
+# DeepSeek counts as a violation of its terms (accounts got suspended); the official API works as an
+# OpenAI-compatible provider. Such entries go, with their browser profile and the proof-of-work module.
+REMOVED_TYPES = {"deepseek"}
+
+
+def _drop_removed(data: list[dict]) -> list[dict]:
+    gone = [p for p in data if isinstance(p, dict) and p.get("type") in REMOVED_TYPES]
+    data = [p for p in data if p not in gone]
+    _write(data)
+    for p in gone:
+        if re.fullmatch(r"[\w-]{1,64}", str(p.get("id") or "")):     # an id, not a path
+            shutil.rmtree(auth.STATE_DIR / f"browser-profile-{p['id']}", ignore_errors=True)
+    for f in auth.STATE_DIR.glob("sha3_wasm_bg*.wasm"):
+        f.unlink(missing_ok=True)
     return data
 
 

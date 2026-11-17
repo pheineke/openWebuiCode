@@ -1,9 +1,9 @@
 """Browser session capture for providers.
 
 The user logs in inside a real browser.  We never see credentials: we only read
-the resulting cookies and the token the web app keeps in localStorage.  This
-works for Open WebUI/Shibboleth and for chat.deepseek.com (email/phone, Google
-or Apple login).  Storing the captured session is up to the caller.
+the resulting cookies and the token the web app keeps in localStorage (Open WebUI,
+also behind Shibboleth, Google or Apple login).  Storing the captured session is up
+to the caller.
 """
 import json
 import os

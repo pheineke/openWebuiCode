@@ -1,4 +1,4 @@
-"""Local chat store for providers that have no chat history of their own (DeepSeek, generic APIs).
+"""Local chat store for providers that have no chat history of their own (OpenAI-compatible APIs).
 
 Open WebUI chats stay in Open WebUI; this store only holds chats whose provider
 type is not openwebui.

@@ -11,7 +11,7 @@
       forAllSystems = f: nixpkgs.lib.genAttrs [ "x86_64-linux" "aarch64-linux" ]
         (system: f nixpkgs.legacyPackages.${system});
 
-      pyDeps = ps: with ps; [ fastapi uvicorn websockets httpx playwright wasmtime pygobject3 pypdf ];
+      pyDeps = ps: with ps; [ fastapi uvicorn websockets httpx playwright pygobject3 pypdf ];
 
       # Typelibs, GIO modules (glib-networking: TLS for WebKit) and GSettings schemas for the window.
       # wrapGAppsHook4 turns them into GI_TYPELIB_PATH, GIO_EXTRA_MODULES and XDG_DATA_DIRS.
@@ -35,7 +35,7 @@
           nativeBuildInputs = [ pkgs.wrapGAppsHook4 pkgs.gobject-introspection ];
           buildInputs = guiLibs pkgs;
           dontWrapGApps = true;
-          # Chromium for the DeepSeek login and as fallback window, bubblewrap and pasta (passt) for the
+          # Chromium for the fallback login and as fallback window, bubblewrap and pasta (passt) for the
           # sandbox around the model's commands; appended to PATH, so ones the user already has come
           # first. -P: never import modules from the current directory.
           preFixup = ''
