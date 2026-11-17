@@ -74,6 +74,10 @@ class Backend:
         """Extra, non-secret fields for the UI."""
         return {}
 
+    def default_icon(self, p: dict) -> str:
+        """Address of the symbol that marks this provider's chats when the user set none ("": none)."""
+        return ""
+
     def check_session(self, p: dict, state: dict) -> bool:
         """Is a freshly captured session really logged in?  Runs in login threads (sync).
 

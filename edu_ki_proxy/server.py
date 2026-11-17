@@ -21,6 +21,7 @@ import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import httpx
 from fastapi import FastAPI, Request, WebSocket
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -341,6 +342,41 @@ async def model_icon(provider: str, model: str):
         return Response(status_code=404)
     body, ctype = _icons[key]
     return Response(body, media_type=ctype, headers={"Cache-Control": "private, max-age=86400"})
+
+
+# A provider's symbol for the chat list (its icon_url, else e.g. the Open WebUI site's favicon), fetched through
+# here: the page loads nothing from other hosts. Per run; a failed fetch is tried again after a few minutes.
+_provider_icons: dict[str, tuple[str, float, tuple[bytes, str] | None]] = {}   # provider -> (source, when, picture)
+ICON_MAX = 1_000_000
+
+
+async def _fetch_icon(url: str) -> tuple[bytes, str] | None:
+    try:
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as c:
+            r = await c.get(url, headers={"Accept": "image/*"})
+    except httpx.HTTPError:
+        return None
+    ctype = r.headers.get("content-type", "").split(";")[0].strip().lower()
+    if r.status_code != 200 or not ctype.startswith("image/") or not r.content or len(r.content) > ICON_MAX:
+        return None
+    return r.content, ctype
+
+
+@app.get("/app/provider-icon/{pid}")
+async def provider_icon(pid: str):
+    p = providers.get(pid)
+    src = providers.icon_source(p) if p else ""
+    if not src:
+        return Response(status_code=404)
+    hit = _provider_icons.get(pid)
+    if not hit or hit[0] != src or (hit[2] is None and time.time() - hit[1] > 300):
+        hit = _provider_icons[pid] = (src, time.time(), await _fetch_icon(src))
+    if not hit[2]:
+        return Response(status_code=404)
+    body, ctype = hit[2]
+    # an SVG opened on its own must not run as a page of this origin
+    return Response(body, media_type=ctype, headers={"Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff",
+                                                      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox"})
 
 
 # ---- app: status, providers, models -----------------------------------------------------------

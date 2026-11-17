@@ -64,6 +64,10 @@ class OpenWebUI(Backend):
     login = "window"
     history = True
 
+    def default_icon(self, p: dict) -> str:
+        base = (p.get("base_url") or "").rstrip("/")
+        return base + "/static/favicon.png" if base else ""      # the instance's own favicon (Open WebUI's, or the admin's)
+
     async def silent_login(self, p: dict) -> dict:
         """Logged in with the app's own form: the university's session still knows the person, so a
         new Shibboleth round needs no password.  Otherwise the browser profile, as before."""

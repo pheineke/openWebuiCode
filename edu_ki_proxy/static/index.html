@@ -94,6 +94,9 @@ html.sb-collapsed #topbar{padding-left:10px}
 .chat .pinmark{display:grid;place-items:center;color:var(--accent);flex:none;padding:0 2px}   /* pinned, at rest */
 .chat .pinmark svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .chat:hover .pinmark,.chat.menuopen .pinmark{display:none}
+.chat .pmark{width:14px;height:14px;flex:none;object-fit:contain;border-radius:3px;margin:0 2px;opacity:.5;filter:saturate(.55)}   /* the provider's symbol, muted like the text beside it */
+.chat.active .pmark{opacity:.75}
+.chat:hover .pmark,.chat.menuopen .pmark{display:none}
 #chatMenu{position:fixed;bottom:auto;min-width:190px;z-index:30}
 #chatMenu .item.danger{color:var(--danger)}
 .chat input.rename{flex:1;min-width:0;font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--accent);border-radius:6px;padding:2px 6px;outline:none}
@@ -578,6 +581,7 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
 .pform select{appearance:none;-webkit-appearance:none;padding-right:30px;cursor:pointer;background-repeat:no-repeat;background-size:5px 5px;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 16px) 55%,calc(100% - 11px) 55%}
 .pform select:focus{outline:none;border-color:var(--accent)}
 .pform .wide{grid-column:1/-1}
+.uhead.addhead{align-items:center;margin-bottom:0}            /* the add button in the title row, not below the form */
 #loginProviders button,.prow button{border:1px solid var(--line);background:var(--btn);color:var(--fg);padding:7px 12px;border-radius:8px;font:inherit;font-size:13px;cursor:pointer}
 #loginProviders button:hover,.prow button:hover{border-color:var(--accent)}
 #loginProviders .ucard button{background:var(--accent);color:var(--accent-fg);border-color:transparent}
@@ -1125,13 +1129,24 @@ function newChatIn(p) {
   else { chat.conn = p.conn || null; chat.workdir = p.workdir; addRecent(p.workdir); }
   resetPanel(); render(); $("input").focus();
 }
+// Chats kept by a provider (Open WebUI) carry its symbol at the right (Einstellungen → Anbieter → Symbol), or its
+// name when it has none or the picture does not load.
+let provInfo = {};                          // provider id -> its public record (from /app/status, /app/providers)
+const setProvInfo = list => { provInfo = Object.fromEntries((list || []).map(p => [p.id, p])); };
+const provIconUrl = pid => { const p = provInfo[pid]; return p && p.icon ? `/app/provider-icon/${enc(pid)}?v=${enc(p.icon)}` : ""; };
 function chatItem(c) {
   const el = document.createElement("div");
   el.className = "chat" + (chat && chat.id === c.id ? " active" : "") + (c.pinned ? " pinned" : "");
   el.dataset.cid = c.id; el.dataset.src = c.source || "";
-  const tag = c.source === "local" ? `<small class="d">lokal</small>` : (c.provider_name ? `<small class="d">${esc(c.provider_name)}</small>` : "");
-  el.innerHTML = `<span>${esc(c.title || "Chat")}${tag}</span>${c.pinned ? `<i class="pinmark" title="Angepinnt">${PIN}</i>` : ""}`
+  const icon = c.source !== "local" && provIconUrl(c.provider), name = c.provider_name || (provInfo[c.provider] || {}).name || "";
+  const nameTag = name ? `<small class="d">${esc(name)}</small>` : "";
+  const tag = c.source === "local" ? `<small class="d">lokal</small>` : icon && !badIcons.has(icon) ? "" : nameTag;
+  el.innerHTML = `<span>${esc(c.title || "Chat")}${tag}</span>`
+    + (tag || !icon ? "" : `<img class="pmark" src="${esc(icon)}" alt="" title="${esc(name)}">`)
+    + (c.pinned ? `<i class="pinmark" title="Angepinnt">${PIN}</i>` : "")
     + `<button class="more" title="Anpinnen, umbenennen, löschen">${DOTS}</button>`;
+  const img = el.querySelector("img.pmark");
+  if (img) img.onerror = () => { badIcons.add(icon); img.remove(); el.querySelector("span").insertAdjacentHTML("beforeend", nameTag); };
   el.onclick = () => { if (!(chat && chat.id === c.id)) openChat(c.id, c.provider, c.source); };   // the open one: nothing to load
   el.ondblclick = e => { if (!e.target.closest(".more")) { e.preventDefault(); startRename(el, c); } };
   el.querySelector(".more").onclick = e => { e.stopPropagation(); openChatMenu(el, c, e.currentTarget); };
@@ -1290,10 +1305,14 @@ const BASE_HINTS = {openwebui: "https://chat.example.de", openai: "https://api.o
 async function renderProviders() {
   const box = $("scont"); box.innerHTML = '<h2>Anbieter</h2><div class="pmsg">Lädt…</div>';
   let list;
-  try { list = loginProviders = await fetchProviders(); } catch (e) { box.innerHTML += `<div class="pmsg err">${esc(String(e.message))}</div>`; return; }
+  try { list = loginProviders = await fetchProviders(); setProvInfo(list); } catch (e) { box.innerHTML += `<div class="pmsg err">${esc(String(e.message))}</div>`; return; }
+  // An expired session counts as logged out: only "Anmelden" and "Entfernen", no account, settings, test or logout
   const rows = list.map(p => `<div class="ucard">
     <div class="uhead"><b>${esc(p.name)}</b><span class="umuted">${esc(providerTypeLabel(p.type))}${providerState(p)}</span></div>
     <p class="umuted" style="margin:6px 0;word-break:break-all">${esc(p.base_url || "")}${p.logged_in && p.user && (p.user.email || p.user.name) ? " · " + esc(p.user.email || p.user.name) : ""}</p>
+    ${p.logged_in && (providerTypes[p.type] || {}).history ? `<div class="pform"><label class="wide">Symbol in der Chatliste (Bildadresse)
+      <input data-icon="${esc(p.id)}" value="${esc(p.icon_url || "")}" placeholder="leer: das Symbol der Seite" spellcheck="false">
+      <small class="umuted" style="font-weight:400">Markiert die Chats dieses Anbieters in der Seitenleiste, z. B. mit dem Favicon deiner Hochschule (…/favicon.ico).</small></label></div>` : ""}
     ${p.logged_in && Array.isArray(p.emulate_tools) ? `<div class="pform"><label class="wide">Tools über den Prompt (Modell-IDs, Komma-getrennt)
       <input data-emu="${esc(p.id)}" value="${esc(p.emulate_tools.join(", "))}" placeholder="z. B. claude-sonnet-5-rptu" spellcheck="false">
       <small class="umuted" style="font-weight:400">Für Modelle, die keine Tool-Aufrufe bekommen: Die Tools werden im Prompt beschrieben und die Antwort ausgewertet.</small></label></div>` : ""}
@@ -1306,7 +1325,7 @@ async function renderProviders() {
     </div></div>`).join("");
   const types = Object.entries(providerTypes);
   box.innerHTML = `<h2>Anbieter</h2>${rows || '<p class="umuted">Noch kein Anbieter eingerichtet.</p>'}
-    <div class="ucard"><div class="uhead"><b>Anbieter hinzufügen</b></div>
+    <div class="ucard"><div class="uhead addhead"><b>Anbieter hinzufügen</b><span class="prow"><button class="ok" id="pAdd">Hinzufügen</button></span></div>
       <div class="pform">
         <label>Typ<select id="pType">${types.map(([k, t]) => `<option value="${esc(k)}">${esc(t.label)}</option>`).join("")}</select></label>
         <label data-f="name">Name<input id="pName" placeholder="optional"></label>
@@ -1315,9 +1334,14 @@ async function renderProviders() {
         <label data-f="models" class="wide">Modelle (Komma-getrennt, optional – sonst vom Server abgefragt)<input id="pModels" placeholder="gpt-4o, o3-mini"></label>
         <p class="umuted wide" id="pHint" style="margin:0"></p>
       </div>
-      <div class="prow"><span style="flex:1"></span><button class="ok" id="pAdd">Hinzufügen</button></div>
     </div>`;
   box.querySelectorAll("button[data-act]").forEach(b => b.onclick = () => providerAction(b.dataset.act, b.dataset.pid, b.dataset.name));
+  box.querySelectorAll("input[data-icon]").forEach(i => i.onchange = async () => {
+    try {
+      const r = await api(`/app/providers/${encodeURIComponent(i.dataset.icon)}`, json("PATCH", {icon_url: i.value}));
+      i.value = r.provider.icon_url; provInfo[r.provider.id] = r.provider; renderList();
+    } catch (e) { notice("Speichern fehlgeschlagen", errMsg(e)); }
+  });
   box.querySelectorAll("input[data-emu]").forEach(i => i.onchange = async () => {
     try {
       const r = await api(`/app/providers/${encodeURIComponent(i.dataset.emu)}`, json("PATCH", {emulate_tools: i.value}));
@@ -3150,6 +3174,7 @@ async function boot() {
   models.catch(() => {}); listed.catch(() => {});      // not logged in after all: nobody waits for them
   const st = await (await fetch("/app/status")).json();
   debugLog = !!st.debug; homeDir = st.home || ""; SANDBOX = st.sandbox || SANDBOX;
+  setProvInfo(st.providers); if (list.length) renderList();       // the list may be here first: now with the symbols
   const logged = (st.providers || []).filter(p => p.logged_in);
   if (!logged.length) return showLogin();
   $("login").classList.remove("on");

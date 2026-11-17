@@ -45,6 +45,22 @@ def clean_base(url: str) -> str:
     return url
 
 
+def _clean_icon(url) -> str:
+    url = str(url or "").strip()
+    if not url:
+        return ""
+    p = urlparse(url)
+    if p.scheme not in ("http", "https") or not p.netloc:
+        raise ValueError("Die Adresse des Symbols muss mit http:// oder https:// beginnen.")
+    return url[:500]
+
+
+def icon_source(p: dict) -> str:
+    """Where the symbol for this provider's chats comes from: the user's choice, else the backend's default."""
+    b = _backend(p.get("type"))
+    return p.get("icon_url") or (b.default_icon(p) if b else "")
+
+
 def _models_list(models) -> list[str]:
     if isinstance(models, str):
         return [m.strip() for m in re.split(r"[,\n]", models) if m.strip()]
@@ -183,6 +199,8 @@ def edit(pid: str, data: dict) -> dict | None:
         patch["api_key"] = str(data["api_key"] or "").strip()
     if "models" in data:
         patch["models"] = _models_list(data["models"])
+    if "icon_url" in data:            # the symbol for its chats in the sidebar; "" = the default
+        patch["icon_url"] = _clean_icon(data["icon_url"])
     if "emulate_tools" in data:       # model ids, with or without the "provider/" prefix
         patch["emulate_tools"] = [m.removeprefix(pid + "/") for m in _models_list(data["emulate_tools"])]
     return update(pid, **patch) if patch else cur
@@ -220,7 +238,7 @@ def public(p: dict) -> dict:
     s = p.get("session") or {}
     out = {"id": p.get("id"), "type": p.get("type"), "name": p.get("name"), "base_url": p.get("base_url"),
            "logged_in": logged_in(p), "expired": bool(s.get("expired")), "user": s.get("user"),
-           "login": b.login if b else None}
+           "login": b.login if b else None, "icon_url": p.get("icon_url") or "", "icon": icon_source(p)}
     if b:
         out.update(b.public(p))
         if b.native_tools:
