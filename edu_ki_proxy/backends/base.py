@@ -24,8 +24,9 @@ def token(p: dict) -> str | None:
     return (p.get("session") or {}).get("token") or None
 
 
-def relay(resp: httpx.Response, client: httpx.AsyncClient, tap: usage.Tap | None = None) -> StreamingResponse:
-    """Pass an upstream response through unchanged (minus hop-by-hop headers), recording usage."""
+def relay(resp: httpx.Response, client: httpx.AsyncClient | None, tap: usage.Tap | None = None) -> StreamingResponse:
+    """Pass an upstream response through unchanged (minus hop-by-hop headers), recording usage.
+    ``client`` is closed at the end; None for a shared client that stays open."""
     out = {k: v for k, v in resp.headers.items()
            if k.lower() not in {"content-length", "content-encoding", "transfer-encoding", "connection", "set-cookie"}}
 
@@ -37,7 +38,8 @@ def relay(resp: httpx.Response, client: httpx.AsyncClient, tap: usage.Tap | None
                 yield chunk
         finally:
             await resp.aclose()
-            await client.aclose()
+            if client is not None:
+                await client.aclose()
             if tap:
                 tap.finish()
 

@@ -28,19 +28,23 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import auth, backends, chats, extract, providers, remote, shibboleth, tools, trace, usage
-from .backends import ProxyError, emulate
+from .backends import ProxyError, emulate, openwebui
 
 
 @asynccontextmanager
 async def lifespan(_app):
     usage.meta()   # live usage capture starts the first time the server runs, not the first time the page is opened
     yield
+    await openwebui.close_clients()
 
 
 app = FastAPI(lifespan=lifespan)
 PORT = 8787
 _login_tasks: dict[str, asyncio.Task] = {}
 _shib_flows: dict[str, shibboleth.Flow] = {}    # provider id -> login waiting for the person's next step
+# provider id -> (entity id, flow, its way to the password form): gone while the person types (shib_prepare)
+_shib_ready: dict[str, tuple[str, shibboleth.Flow, asyncio.Task]] = {}
+SHIB_READY_FOR = 300       # seconds a prepared way is used; the university's step may expire after that
 
 
 @app.exception_handler(ProxyError)
@@ -382,27 +386,99 @@ class ShibAnswer(BaseModel):
     values: dict = {}
 
 
-async def _shib_step(pid: str, flow: shibboleth.Flow, step) -> dict:
+class ShibPrepare(BaseModel):
+    entity_id: str
+
+
+def _idp_cookies(p: dict, entity_id: str) -> list | None:
+    """The university's session from earlier logins, reused (it may skip consent pages)."""
+    keep = (p.get("session") or {}).get("shib") or {}
+    return keep.get("cookies") if keep.get("entity_id") == entity_id else None
+
+
+async def _closing(flow: shibboleth.Flow, step) -> tuple[shibboleth.Flow, dict]:
+    """(flow, result of the step); a flow whose step fails is closed."""
     try:
-        result = await step
-    except shibboleth.ShibError as e:
-        _shib_flows.pop(pid, None)
+        return flow, await step
+    except BaseException:
         await flow.close()
+        raise
+
+
+async def _shib_step(pid: str, run) -> dict:
+    """The outcome of a login step for the app: run gives (flow, result) and closes the flow if it fails."""
+    try:
+        flow, result = await run
+    except shibboleth.ShibError as e:
         return JSONResponse({"error": {"message": str(e), "kind": type(e).__name__}}, status_code=400)
     except Exception as e:
-        _shib_flows.pop(pid, None)
-        await flow.close()
         trace.log("shib", error=repr(e))
         return JSONResponse({"error": {"message": f"Anmeldung fehlgeschlagen: {e}"}}, status_code=502)
     if "ask" in result:
         _shib_flows[pid] = flow
         return {"ask": result["ask"]}
-    _shib_flows.pop(pid, None)
     await flow.close()
     state = result["done"]
     providers.set_session(pid, state)
     providers.update(pid, shib={"entity_id": flow.entity_id, "username": flow.username})
     return {"logged_in": True, "provider": providers.public(providers.get(pid))}
+
+
+async def _drop_ready(pid: str) -> None:
+    if ready := _shib_ready.pop(pid, None):
+        ready[2].cancel()
+        await ready[1].close()
+
+
+@app.post("/app/providers/{pid}/shib/prepare")
+async def shib_prepare(pid: str, body: ShibPrepare):
+    """While the person types: the way from the service to the university's password form (redirects
+    at both ends, over a second), so that the login itself only has to send the password."""
+    p = _shib_provider(pid)
+    entity = body.entity_id.strip()
+    ready = _shib_ready.get(pid)
+    if ready and ready[0] == entity and time.time() - ready[1].started < SHIB_READY_FOR:
+        return {"ok": True}
+    await _drop_ready(pid)
+    if entity:
+        flow = shibboleth.Flow(p["base_url"], entity, idp_cookies=_idp_cookies(p, entity))
+        task = asyncio.create_task(flow.start(pause_at_login=True))
+        task.add_done_callback(lambda t: t.cancelled() or t.exception())    # a failure shows at the login, not here
+        _shib_ready[pid] = (entity, flow, task)
+    return {"ok": True}
+
+
+async def _prepared(pid: str, entity: str) -> tuple[shibboleth.Flow, dict] | None:
+    """The prepared way for this university, once it has arrived; None if there is none or it failed."""
+    ready = _shib_ready.pop(pid, None)
+    if not ready:
+        return None
+    e, flow, task = ready
+    if e == entity and time.time() - flow.started < SHIB_READY_FOR:
+        await asyncio.wait({task})
+        if not task.cancelled() and not task.exception():
+            return flow, task.result()
+    task.cancel()
+    await flow.close()
+    return None
+
+
+async def _shib_login(p: dict, entity: str, username: str, password: str) -> tuple[shibboleth.Flow, dict]:
+    if ready := await _prepared(p["id"], entity):
+        flow, result = ready
+        if "login" not in result:     # the university still knew the person, or asks something first
+            flow.username, flow.password, flow.pause = username, password, False
+            if "done" in result:
+                result["done"]["shib"]["username"] = username
+            return flow, result
+        try:
+            return await _closing(flow, flow.login(username, password))
+        except shibboleth.BadLogin:
+            raise
+        except Exception as e:                  # e.g. the university's step expired after all: once more from the start
+            trace.log("shib", prepared_failed=repr(e))
+    flow = shibboleth.Flow(p["base_url"], entity, username, password, _idp_cookies(p, entity))
+    return await _closing(flow, flow.start())
 
 
 @app.post("/app/providers/{pid}/shib")
@@ -412,25 +488,24 @@ async def shib_login(pid: str, body: ShibStart):
         raise ProxyError("Bitte Hochschule, Benutzername und Passwort angeben.", 400)
     if old := _shib_flows.pop(pid, None):
         await old.close()
-    # the university's session from earlier logins is reused (it may skip consent pages)
-    keep = ((p.get("session") or {}).get("shib") or {})
-    cookies = keep.get("cookies") if keep.get("entity_id") == body.entity_id.strip() else None
-    flow = shibboleth.Flow(p["base_url"], body.entity_id.strip(), body.username.strip(), body.password, cookies)
-    return await _shib_step(pid, flow, flow.start())
+    return await _shib_step(pid, _shib_login(p, body.entity_id.strip(), body.username.strip(), body.password))
 
 
 @app.post("/app/providers/{pid}/shib/answer")
 async def shib_answer(pid: str, body: ShibAnswer):
-    flow = _shib_flows.get(pid)
+    flow = _shib_flows.pop(pid, None)
     if not flow or time.time() - flow.started > 900:
+        if flow:
+            await flow.close()
         raise ProxyError("Dieser Anmeldeschritt ist abgelaufen. Bitte noch einmal anmelden.", 400)
-    return await _shib_step(pid, flow, flow.answer(body.button, body.values))
+    return await _shib_step(pid, _closing(flow, flow.answer(body.button, body.values)))
 
 
 @app.delete("/app/providers/{pid}/shib")
 async def shib_cancel(pid: str):
     if flow := _shib_flows.pop(pid, None):
         await flow.close()
+    await _drop_ready(pid)
     return {"ok": True}
 
 

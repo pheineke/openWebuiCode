@@ -764,10 +764,17 @@ async function shibOpen(p) {
   $("shibUser").value = last.username || ""; $("shibPass").value = ""; shibMsg("");
   loginView("form");
   ($("shibIdp").value ? ($("shibUser").value ? $("shibPass") : $("shibUser")) : $("shibIdp")).focus();
+  shibPrepare();
   return true;
 }
+const shibEntity = () => $("shibIdp").value === "__other" ? $("shibOther").value.trim() : $("shibIdp").value;
+// While the person types, the server goes the way to the university's password form (over a second
+// of redirects), so "Anmelden" only has to send the password. Again for each change of university.
+function shibPrepare() {
+  if (shib && shibEntity()) fetch(`/app/providers/${encodeURIComponent(shib.pid)}/shib/prepare`, json("POST", {entity_id: shibEntity()})).catch(() => {});
+}
 function shibClose() {
-  if (shib && !$("shibAsk").hidden) fetch(`/app/providers/${encodeURIComponent(shib.pid)}/shib`, {method: "DELETE"}).catch(() => {});
+  if (shib) fetch(`/app/providers/${encodeURIComponent(shib.pid)}/shib`, {method: "DELETE"}).catch(() => {});
   shib = null; $("shibPass").value = ""; loginView("list");
 }
 function shibBusy(on, btn = $("shibGo"), text = "Anmelden …") {
@@ -784,14 +791,16 @@ async function shibResult(r) {
 function shibFailed(e) {
   $("shibPass").value = ""; loginView("form"); shibMsg(errMsg(e));
   ($("shibUser").value ? $("shibPass") : $("shibUser")).focus();
+  shibPrepare();                                       // the next try is quick again
 }
-$("shibIdp").onchange = () => { $("shibOtherRow").hidden = $("shibIdp").value !== "__other"; if (!$("shibOtherRow").hidden) $("shibOther").focus(); };
+$("shibIdp").onchange = () => { $("shibOtherRow").hidden = $("shibIdp").value !== "__other"; if (!$("shibOtherRow").hidden) $("shibOther").focus(); shibPrepare(); };
+$("shibOther").onchange = shibPrepare;
 $("shibBack").onclick = shibClose;
 $("shibWeb").onclick = e => { e.preventDefault(); const pid = shib && shib.pid; shibClose(); if (pid && !windowLogin(pid)) chromiumLogin(pid); else if (pid) $("loginMsg").textContent = "Die Anmeldung läuft im Fenster …"; };
 $("shibForm").onsubmit = async e => {
   e.preventDefault();
   if (!shib) return;
-  const sel = $("shibIdp").value, entity = sel === "__other" ? $("shibOther").value.trim() : sel;
+  const sel = $("shibIdp").value, entity = shibEntity();
   if (!entity) { shibMsg("Bitte wähle deine Hochschule aus."); return (sel === "__other" ? $("shibOther") : $("shibIdp")).focus(); }
   if (!$("shibUser").value.trim()) { shibMsg("Bitte gib deinen Benutzernamen ein."); return $("shibUser").focus(); }
   if (!$("shibPass").value) { shibMsg("Bitte gib dein Passwort ein."); return $("shibPass").focus(); }
@@ -1348,13 +1357,13 @@ document.addEventListener("keydown", e => {
   else if (e.key === "Escape") { closeChatMenu(); $("lightbox").classList.remove("on"); closeSearch(); closeSettings(); $("sshModal").classList.remove("on"); document.querySelectorAll(".menu.on, .umenu.on").forEach(m => m.classList.remove("on")); $("userMenu").classList.remove("on"); $("picker").classList.remove("on"); }
 });
 
-function newChat() {
+function newChat(reload = true) {
   if (streaming) streaming.abort();
   editId = null;
   const model = $("model").value || Object.keys(MODEL_META)[0] || "";
   chat = {id: null, title: "Neuer Chat", model, provider: modelProvider(model), source: modelIsOW(model) ? "openwebui" : "local",
           conn: null, workdir: localStorage.workdir || null, perm: "ask", skills: [], webSearch: false, cards: cardPref(), history: {messages: {}, currentId: null}, updated_at: 0};
-  resetPanel(); render(); loadList();
+  resetPanel(); render(); if (reload) loadList();
 }
 
 async function openChat(id, provider, source) {
@@ -1377,7 +1386,8 @@ async function openChat(id, provider, source) {
   addRecent(chat.workdir); resetPanel(); render();
   const known = list.find(x => x.id === id);
   chat.project = h.project || (known && known.project) || null;
-  if (chat.workdir && known && !known.workdir) noteMeta(chat).then(loadList); else loadList();   // an older chat: its folder joins the projects now
+  if (chat.workdir && known && !known.workdir) noteMeta(chat).then(loadList);   // an older chat: its folder joins the projects now
+  else renderList();                        // the list itself is unchanged (sync() picks up changes made elsewhere)
 }
 
 // ---- rendering ---------------------------------------------------------
@@ -2707,6 +2717,9 @@ setInterval(sync, 20000);
 document.addEventListener("visibilitychange", sync);
 
 async function boot() {
+  // All at once: each of these waits on the provider's server, not on the others.
+  const models = loadModels(), listed = loadList(), conns = api("/app/ssh").then(r => { connections = r.connections; }, () => {});
+  models.catch(() => {}); listed.catch(() => {});      // not logged in after all: nobody waits for them
   const st = await (await fetch("/app/status")).json();
   debugLog = !!st.debug; homeDir = st.home || "";
   const logged = (st.providers || []).filter(p => p.logged_in);
@@ -2717,10 +2730,10 @@ async function boot() {
   userFirst = label.split(" ")[0];
   $("av").textContent = (userFirst || "?").charAt(0).toUpperCase();
   $("uemail").textContent = st.user?.email || logged.map(p => p.name).join(", ");
-  try { connections = (await api("/app/ssh")).connections; } catch {}
-  await loadModels();
+  await conns;
+  await models;
   if (!Object.keys(MODEL_META).length) return showLogin("Kein Modell verfügbar. Bitte einen Anbieter anmelden.");
-  newChat();
+  newChat(false);                                      // the chat list is on its way already
 }
 if (localStorage.workdir) { try { const k = "recentFolders"; const r = JSON.parse(localStorage[k] || "[]"); if (!r.includes(localStorage.workdir)) localStorage[k] = JSON.stringify([localStorage.workdir, ...r].slice(0, 8)); } catch {} }   // folders used before this feature existed
 applySidebar();

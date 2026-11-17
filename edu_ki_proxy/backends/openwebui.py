@@ -5,8 +5,10 @@ runs out it answers 3xx to its login page; Open WebUI itself answers 401.  Eithe
 refresh from the persistent browser profile is tried before giving up.
 """
 import asyncio
+import http.cookiejar
 import json
 import re
+import weakref
 from urllib.parse import quote
 
 import httpx
@@ -18,6 +20,29 @@ from .base import Backend, ProxyError, relay, token
 
 HOP = {"host", "content-length", "connection", "keep-alive", "transfer-encoding", "upgrade",
        "authorization", "cookie", "accept-encoding"}
+IDEMPOTENT = {"GET", "HEAD", "OPTIONS", "PUT", "DELETE"}
+
+# One kept-alive client per instance (and event loop: the CLI runs one loop per command).  A new connection
+# costs a TCP and a TLS handshake, about 0.25 s to EDU-KI, which every request paid with a client of its own.
+_clients: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, dict[str, httpx.AsyncClient]]" = weakref.WeakKeyDictionary()
+
+
+def _shared_client(base: str) -> httpx.AsyncClient:
+    clients = _clients.setdefault(asyncio.get_running_loop(), {})
+    cli = clients.get(base)
+    if cli is None or cli.is_closed:
+        cli = clients[base] = httpx.AsyncClient(
+            base_url=base, timeout=httpx.Timeout(600, connect=20), follow_redirects=False,
+            # no connection cap: a stream the app walks away from must not block the others
+            limits=httpx.Limits(max_connections=None, max_keepalive_connections=10, keepalive_expiry=30),
+            # the session's cookies go with each request; the shared client keeps none of its own
+            cookies=http.cookiejar.CookieJar(http.cookiejar.DefaultCookiePolicy(allowed_domains=[])))
+    return cli
+
+
+async def close_clients() -> None:
+    for cli in _clients.pop(asyncio.get_running_loop(), {}).values():
+        await cli.aclose()
 
 
 def _headers(state: dict) -> dict:
@@ -38,10 +63,6 @@ class OpenWebUI(Backend):
     hint = "Basis-URL der Instanz, z. B. https://chat.example.de. Die Anmeldung läuft im App-Fenster."
     login = "window"
     history = True
-
-    def _client(self, p: dict) -> httpx.AsyncClient:
-        return httpx.AsyncClient(base_url=(p.get("base_url") or "").rstrip("/"),
-                                 timeout=httpx.Timeout(600, connect=20), follow_redirects=False)
 
     async def silent_login(self, p: dict) -> dict:
         """Logged in with the app's own form: the university's session still knows the person, so a
@@ -67,38 +88,37 @@ class OpenWebUI(Backend):
         return True
 
     async def send(self, p: dict, method: str, path: str, *, params=None, headers=None, content=None,
-                   stream: bool = False) -> tuple[httpx.Response, httpx.AsyncClient]:
+                   stream: bool = False) -> httpx.Response:
         """One request to /api/<path>, retried once after a silent refresh.  With stream=True the
-        caller owns (and closes) the response and the client."""
-        cli = self._client(p)
-        try:
-            for attempt in (0, 1):
-                req = cli.build_request(method, f"/api/{path.lstrip('/')}", params=params, content=content,
-                                        headers={**(headers or {}), **_headers(p.get("session") or {})})
-                resp = await cli.send(req, stream=stream)
-                if not _expired(resp) or attempt:
-                    if not stream:
-                        await cli.aclose()
-                    return resp, cli
-                await resp.aclose()
-                p = await self.refresh(p, token(p))
-        except BaseException:
-            await cli.aclose()
-            raise
+        caller closes the response."""
+        cli = _shared_client((p.get("base_url") or "").rstrip("/"))
+        for attempt in (0, 1):
+            def request():
+                return cli.build_request(method, f"/api/{path.lstrip('/')}", params=params, content=content,
+                                         headers={**(headers or {}), **_headers(p.get("session") or {})})
+            try:
+                resp = await cli.send(request(), stream=stream)
+            except httpx.RemoteProtocolError:
+                if method not in IDEMPOTENT:
+                    raise
+                resp = await cli.send(request(), stream=stream)     # a kept-alive connection the server had just closed
+            if not _expired(resp) or attempt:
+                return resp
+            await resp.aclose()
+            p = await self.refresh(p, token(p))
         raise AssertionError("unreachable")
 
     async def get(self, p: dict, path: str, **params) -> httpx.Response:
-        resp, _ = await self.send(p, "GET", path, params=params or None)
-        return resp
+        return await self.send(p, "GET", path, params=params or None)
 
     async def forward(self, p: dict, path: str, request: Request, tap_model: str | None = None) -> StreamingResponse:
         """Raw pass-through for the app's own Open WebUI calls (/ow/*)."""
         params = {k: v for k, v in request.query_params.items() if k != "provider"}
         headers = {k: v for k, v in request.headers.items() if k.lower() not in HOP}
-        resp, cli = await self.send(p, request.method, path, params=params, headers=headers,
-                                    content=await request.body(), stream=True)
+        resp = await self.send(p, request.method, path, params=params, headers=headers,
+                               content=await request.body(), stream=True)
         tap = usage.Tap(p["id"], tap_model, "text/event-stream" in resp.headers.get("content-type", "")) if tap_model else None
-        return relay(resp, cli, tap)
+        return relay(resp, None, tap)
 
     # ---- Backend API --------------------------------------------------------------------------
     async def models(self, p: dict) -> list[tuple[str, str]]:
@@ -113,10 +133,10 @@ class OpenWebUI(Backend):
     async def chat(self, p: dict, data: dict):
         headers = {"Content-Type": "application/json",
                    "Accept": "text/event-stream" if data.get("stream") else "application/json"}
-        resp, cli = await self.send(p, "POST", "chat/completions", headers=headers,
-                                    content=json.dumps(data).encode(), stream=True)
-        return relay(resp, cli, usage.Tap(p["id"], data.get("model"),
-                                          "text/event-stream" in resp.headers.get("content-type", "")))
+        resp = await self.send(p, "POST", "chat/completions", headers=headers,
+                               content=json.dumps(data).encode(), stream=True)
+        return relay(resp, None, usage.Tap(p["id"], data.get("model"),
+                                           "text/event-stream" in resp.headers.get("content-type", "")))
 
     async def skills(self, p: dict) -> list[dict]:
         """Skills from the workspace (Arbeitsbereich -> Skills); versions without them answer with their web
@@ -153,9 +173,8 @@ class OpenWebUI(Backend):
         return {"notice": str(notice or "")}
 
     async def _post_json(self, p: dict, path: str, body: dict) -> httpx.Response:
-        resp, _ = await self.send(p, "POST", path, headers={"Content-Type": "application/json"},
-                                  content=json.dumps(body).encode())
-        return resp
+        return await self.send(p, "POST", path, headers={"Content-Type": "application/json"},
+                               content=json.dumps(body).encode())
 
     async def web_search(self, p: dict, messages: list[dict], model: str | None) -> dict:
         """Open WebUI's web search, the way its own web UI runs it for a message: queries from its task model,
@@ -229,31 +248,38 @@ class OpenWebUI(Backend):
         return {"id": c.get("id"), "title": c.get("title") or "Chat", "updated_at": c.get("updated_at") or 0,
                 "provider": p["id"], "provider_name": p.get("name"), "source": "openwebui", **extra}
 
+    async def _chats(self, p: dict, path: str, **params) -> list[dict]:
+        """A list of chats from Open WebUI; nothing when it fails."""
+        try:
+            r = await self.get(p, path, **params)
+            items = r.json() if r.status_code == 200 else []
+        except (httpx.HTTPError, ValueError):
+            return []
+        return [c for c in items if isinstance(c, dict) and c.get("id")] if isinstance(items, list) else []
+
     async def chat_list(self, p: dict, limit: int = 100) -> list[dict]:
+        # Pages 1 and 2 and the pinned chats at once: a single round trip for anyone with fewer chats than
+        # two pages.  Further pages only while they bring new chats (a server without paging repeats page 1).
+        first, second, pinned = await asyncio.gather(
+            self._chats(p, "v1/chats/", page=1), self._chats(p, "v1/chats/", page=2), self._chats(p, "v1/chats/pinned"))
         out: list[dict] = []
         seen: set[str] = set()
-        try:
-            for page in range(1, 21):
-                r = await self.get(p, "v1/chats/", page=page)
-                batch = r.json() if r.status_code == 200 else []
-                if not batch:
+
+        def add(batch: list[dict]) -> bool:
+            new = [c for c in batch if c["id"] not in seen]
+            for c in new:
+                seen.add(c["id"])
+                out.append(self._item(p, c, model=(c.get("models") or [None])[0]))
+            return bool(new)
+
+        page = 2
+        if add(first) and add(second):
+            while len(out) < limit and page < 20:
+                page += 1
+                if not add(await self._chats(p, "v1/chats/", page=page)):
                     break
-                for c in batch:
-                    if c.get("id") and c["id"] not in seen:
-                        seen.add(c["id"])
-                        out.append(self._item(p, c, model=(c.get("models") or [None])[0]))
-                if len(out) >= limit:
-                    break
-        except (httpx.HTTPError, ValueError):
-            pass
         out = out[:limit]
-        try:                       # pinned ones are marked; any the plain list leaves out are added
-            r = await self.get(p, "v1/chats/pinned")
-            pinned = r.json() if r.status_code == 200 else []
-        except (httpx.HTTPError, ValueError):
-            pinned = []
-        pinned = [c for c in pinned if isinstance(c, dict) and c.get("id")] if isinstance(pinned, list) else []
-        ids = {c["id"] for c in pinned}
+        ids = {c["id"] for c in pinned}        # pinned ones are marked; any the plain list leaves out are added
         for c in out:
             c["pinned"] = c["id"] in ids
         out += [self._item(p, c, pinned=True) for c in pinned if c["id"] not in seen]
@@ -283,7 +309,7 @@ class OpenWebUI(Backend):
             raise ProxyError("Chat nicht gefunden.", 404)
         if bool((r.json() or {}).get("pinned")) == pinned:
             return
-        resp, _ = await self.send(p, "POST", f"v1/chats/{cid}/pin")
+        resp = await self.send(p, "POST", f"v1/chats/{cid}/pin")
         if resp.status_code >= 400:
             raise ProxyError(f"Anpinnen fehlgeschlagen (HTTP {resp.status_code}).", 502)
 
@@ -294,13 +320,13 @@ class OpenWebUI(Backend):
             raise ProxyError("Chat nicht gefunden.", 404)
         chat = (r.json() or {}).get("chat") or {}
         chat["title"] = title
-        resp, _ = await self.send(p, "POST", f"v1/chats/{cid}", headers={"Content-Type": "application/json"},
-                                  content=json.dumps({"chat": chat}).encode())
+        resp = await self.send(p, "POST", f"v1/chats/{cid}", headers={"Content-Type": "application/json"},
+                               content=json.dumps({"chat": chat}).encode())
         if resp.status_code >= 400:
             raise ProxyError(f"Umbenennen fehlgeschlagen (HTTP {resp.status_code}).", 502)
 
     async def chat_delete(self, p: dict, cid: str) -> None:
-        resp, _ = await self.send(p, "DELETE", f"v1/chats/{cid}")
+        resp = await self.send(p, "DELETE", f"v1/chats/{cid}")
         if resp.status_code >= 400:
             raise ProxyError("Chat nicht gefunden.", 404)
 

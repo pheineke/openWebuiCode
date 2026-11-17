@@ -11,7 +11,11 @@ Pages that need a person (attribute release consent, terms of use, a one-time co
 answered here: they are described as a form (``Ask``) for the app to show, and the answer is sent
 back with ``Flow.answer``.  The IdP's cookies are kept, so a later login while the university still
 knows the person needs no password (``refresh``).  The password itself is never stored.
+
+The way to the password form takes a few redirects (over a second); the app goes it while the
+person is still typing (``start(pause_at_login=True)``), so the login itself only sends the password.
 """
+import asyncio
 import html
 import http.cookiejar
 import re
@@ -21,6 +25,8 @@ from html.parser import HTMLParser
 from urllib.parse import quote, urljoin, urlparse
 
 import httpx
+
+from . import trace
 
 UA = "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0 EDU-KI-Code"
 HEADERS = {"User-Agent": UA, "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
@@ -310,7 +316,8 @@ def _host_match(host: str, domain: str) -> bool:
 
 
 class Flow:
-    """One login.  ``start()``/``answer()`` return {"done": session} or {"ask": form description}."""
+    """One login.  ``start()``/``login()``/``answer()`` return {"done": session} or {"ask": form description};
+    ``start(pause_at_login=True)`` without a password also {"login": True} at the university's password form."""
 
     def __init__(self, base_url: str, entity_id: str, username: str = "", password: str = "",
                  idp_cookies: list | None = None):
@@ -321,15 +328,36 @@ class Flow:
         for c in idp_cookies or []:
             _cookie_in(self.cli.cookies, c)
         self.sent_password = False
+        self.pause = False
+        self.login_form: Form | None = None     # the password form, while paused there
         self.pending: Form | None = None
         self.started = time.time()
 
     async def close(self) -> None:
         await self.cli.aclose()
 
-    async def start(self) -> dict:
+    async def start(self, pause_at_login: bool = False) -> dict:
+        self.pause = pause_at_login
         url = f"{self.base}/Shibboleth.sso/Login?entityID={quote(self.entity_id, safe='')}&target={quote('/', safe='')}"
         return await self._run("GET", url, None)
+
+    async def login(self, username: str, password: str) -> dict:
+        """Go on from the password form that ``start(pause_at_login=True)`` stopped at."""
+        form, self.login_form = self.login_form, None
+        if not form:
+            raise ShibError("Dieser Anmeldeschritt ist abgelaufen. Bitte noch einmal anmelden.")
+        self.username, self.password = username, password
+        return await self._run(*self._login_request(form))
+
+    def _login_request(self, form: Form) -> tuple[str, str, dict]:
+        user = next((f for f in form.fields if f.type in ("text", "email") and f.name in ("j_username", "username", "user", "login")), None) \
+            or next((f for f in form.fields if f.type in ("text", "email")), None)
+        pw = next(f for f in form.fields if f.type == "password")
+        button = next((b[0] for b in form.buttons if b[0] == "_eventId_proceed"), None) \
+            or next((b[0] for b in form.buttons), None)
+        values = {pw.name: self.password, **({user.name: self.username} if user else {})}
+        self.sent_password = True
+        return form.method, form.action, form.submit(button, values)
 
     async def answer(self, button: str | None, values: dict | None = None) -> dict:
         form, self.pending = self.pending, None
@@ -362,15 +390,11 @@ class Flow:
                 if self.sent_password:
                     raise BadLogin(page.error() or "Benutzername oder Passwort stimmen nicht.")
                 if not self.password:
+                    if self.pause:
+                        self.login_form = form
+                        return {"login": True}
                     raise NeedPassword("Die Hochschule möchte das Passwort.")
-                user = next((f for f in form.fields if f.type in ("text", "email") and f.name in ("j_username", "username", "user", "login")), None) \
-                    or next((f for f in form.fields if f.type in ("text", "email")), None)
-                pw = next(f for f in form.fields if f.type == "password")
-                button = next((b[0] for b in form.buttons if b[0] == "_eventId_proceed"), None) \
-                    or next((b[0] for b in form.buttons), None)
-                values = {pw.name: self.password, **({user.name: self.username} if user else {})}
-                self.sent_password = True
-                method, url, data = form.method, form.action, form.submit(button, values)
+                method, url, data = self._login_request(form)
                 continue
             self.pending = form
             return {"ask": describe(form, page)}
@@ -379,10 +403,13 @@ class Flow:
     async def _go(self, method: str, url: str, data: dict | None) -> httpx.Response | None:
         """Follow redirects; None once the SP has handed out its session cookie."""
         for _ in range(15):
+            t = time.monotonic()
             if method == "POST":
                 resp = await self.cli.post(url, data=data)
             else:
                 resp = await self.cli.get(url, params=data or None)
+            trace.log("shib hop", method=method, host=resp.url.host, path=resp.url.path, status=resp.status_code,
+                      ms=round((time.monotonic() - t) * 1000))
             if resp.url.host == self.host and any(h.split("=", 1)[0].strip().startswith("_shibsession_")
                                                    for h in resp.headers.get_list("set-cookie")):
                 return None
@@ -396,7 +423,10 @@ class Flow:
         raise ShibError("Zu viele Weiterleitungen bei der Anmeldung.")
 
     async def _finish(self) -> dict:
+        t = time.monotonic()
         r = await self.cli.post(self.base + "/api/v1/auths/signin", json={"email": "", "password": ""})
+        trace.log("shib hop", method="POST", host=r.url.host, path=r.url.path, status=r.status_code,
+                  ms=round((time.monotonic() - t) * 1000))
         try:
             d = r.json()
         except ValueError:
@@ -468,6 +498,7 @@ _EDUKI_OWUI = [
 ]
 BUILTIN = {"chat-test.edu-ki-rlp.de": _EDUKI_OWUI}
 _cache: dict = {}        # base url -> (time, info)
+_loading: dict = {}      # base url -> task reading it anew
 
 
 def _portal_list(page: str, host: str) -> list:
@@ -487,12 +518,32 @@ def _portal_list(page: str, host: str) -> list:
     return out
 
 
+def _info(available: bool, idps: list) -> dict:
+    return {"available": available, "idps": [{"group": g, "name": n, "entity_id": e, "status": s} for g, n, e, s in idps]}
+
+
 async def info(base_url: str) -> dict:
-    """{"available": bool, "idps": [{group, name, entity_id, status}]} for a service, cached for an hour."""
+    """{"available": bool, "idps": [{group, name, entity_id, status}]} for a service.
+
+    Reading it takes three requests (over a second), and the login form waits for it: a service seen
+    before (or a built-in one) gets its last list at once while a fresh one is read for next time."""
     base = base_url.rstrip("/")
     hit = _cache.get(base)
     if hit and time.time() - hit[0] < 3600:
         return hit[1]
+    task = _loading.get(base)
+    if task is None:
+        task = _loading[base] = asyncio.ensure_future(_read_info(base))
+        task.add_done_callback(lambda t: (_loading.pop(base, None), t.cancelled() or t.exception()))
+    host = urlparse(base).hostname or ""
+    if hit:
+        return hit[1]
+    if host in BUILTIN:
+        return _info(True, BUILTIN[host])
+    return await asyncio.shield(task)
+
+
+async def _read_info(base: str) -> dict:
     host = urlparse(base).hostname or ""
     available, idps = False, []
     async with httpx.AsyncClient(headers=HEADERS, timeout=15, follow_redirects=False) as cli:
@@ -509,8 +560,9 @@ async def info(base_url: str) -> dict:
                     idps = _portal_list(portal.text, host)
             except httpx.HTTPError:
                 pass
-    idps = idps or BUILTIN.get(host, [])
-    result = {"available": available, "idps": [{"group": g, "name": n, "entity_id": e, "status": s} for g, n, e, s in idps]}
+    result = _info(available, idps or BUILTIN.get(host, []))
     if available:
         _cache[base] = (time.time(), result)
+    else:
+        _cache.pop(base, None)
     return result
