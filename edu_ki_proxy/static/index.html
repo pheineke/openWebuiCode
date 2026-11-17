@@ -15,7 +15,7 @@ function loadAppearance() {
 }
 // Chat backgrounds: a pattern behind the messages, drawn in the accent colour and faint enough that text stays
 // fully readable. Each is a 240 px tile; k scales its opacities (less on dark backgrounds, where colour glows more).
-const CHAT_BGS = {none: "Schlicht", bubbles: "Blasen", doodles: "Doodles", cosmic: "Kosmos"};
+const CHAT_BGS = {none: "Schlicht", bubbles: "Blasen", doodles: "Doodles", cosmic: "Kosmos", fish: "Fische"};
 function bubblesSvg(c, k) {
   const o = v => +(v * k).toFixed(3);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240">`
@@ -79,7 +79,83 @@ function cosmicSvg(c, k) {                // space: sparkles, starbursts, planet
     + `<circle cx="102" cy="206" r="3"/><circle cx="28" cy="86" r="2.5"/></g>`
     + `<g fill="currentColor" fill-opacity="${o(.06)}"><circle cx="98" cy="34" r="2"/><circle cx="164" cy="108" r="1.8"/><circle cx="148" cy="210" r="2"/></g></svg>`;
 }
-const PATTERNS = {bubbles: bubblesSvg, doodles: doodlesSvg, cosmic: cosmicSvg};
+function fishSvg(c, k) {                  // under water: starfish, fish, a shark, an angelfish, a koi, a seahorse, a pufferfish
+  const o = v => +(v * k).toFixed(3);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240" color="${c}">
+    <g fill="none" stroke="currentColor" stroke-opacity="${o(.11)}" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">
+    <path transform="translate(0, 0)" d="M 0 -10 L 2.8 -3.9 L 9.5 -3.1 L 4.6 1.5 L 5.9 8.1 L 0 4.8 L -5.9 8.1 L -4.6 1.5 L -9.5 -3.1 L -2.8 -3.9 Z"/>
+    <path transform="translate(240, 0)" d="M 0 -10 L 2.8 -3.9 L 9.5 -3.1 L 4.6 1.5 L 5.9 8.1 L 0 4.8 L -5.9 8.1 L -4.6 1.5 L -9.5 -3.1 L -2.8 -3.9 Z"/>
+    <path transform="translate(0, 240)" d="M 0 -10 L 2.8 -3.9 L 9.5 -3.1 L 4.6 1.5 L 5.9 8.1 L 0 4.8 L -5.9 8.1 L -4.6 1.5 L -9.5 -3.1 L -2.8 -3.9 Z"/>
+    <path transform="translate(240, 240)" d="M 0 -10 L 2.8 -3.9 L 9.5 -3.1 L 4.6 1.5 L 5.9 8.1 L 0 4.8 L -5.9 8.1 L -4.6 1.5 L -9.5 -3.1 L -2.8 -3.9 Z"/>
+    <g transform="translate(130, 0) rotate(-12)">
+    <path d="M 10 0 C 6 -6 -2 -6 -6.5 -1.5 L -11 -4.8 L -9 0 L -11 4.8 L -6.5 1.5 C -2 6 6 6 10 0 Z"/>
+    <path d="M 3.5 -3.5 Q 2 0 3.5 3.5"/><circle cx="6.2" cy="-1.2" r="0.8"/>
+    </g>
+    <g transform="translate(130, 240) rotate(-12)">
+    <path d="M 10 0 C 6 -6 -2 -6 -6.5 -1.5 L -11 -4.8 L -9 0 L -11 4.8 L -6.5 1.5 C -2 6 6 6 10 0 Z"/>
+    <path d="M 3.5 -3.5 Q 2 0 3.5 3.5"/><circle cx="6.2" cy="-1.2" r="0.8"/>
+    </g>
+    <g transform="translate(0, 125) rotate(8)">
+    <path d="M 15 0 C 9.5 -4.2 -4 -4.2 -10 -1.5 L -15.5 -4.8 L -13.2 0 L -15.5 4.8 L -10 1.5 C -4 4.2 9.5 4.2 15 0 Z"/>
+    <path d="M -2.5 -3.5 L -5.5 -6.8 L 1 -3.8 M 7 -2.2 Q 5.5 0 7 2.2"/><circle cx="10.5" cy="-0.9" r="0.8"/>
+    </g>
+    <g transform="translate(240, 125) rotate(8)">
+    <path d="M 15 0 C 9.5 -4.2 -4 -4.2 -10 -1.5 L -15.5 -4.8 L -13.2 0 L -15.5 4.8 L -10 1.5 C -4 4.2 9.5 4.2 15 0 Z"/>
+    <path d="M -2.5 -3.5 L -5.5 -6.8 L 1 -3.8 M 7 -2.2 Q 5.5 0 7 2.2"/><circle cx="10.5" cy="-0.9" r="0.8"/>
+    </g>
+    <g transform="translate(66, 56) rotate(-15)">
+    <path d="M 12 0 C 7 -7.5 -3 -7.5 -8 -2 L -14 -6 L -11.5 0 L -14 6 L -8 2 C -3 7.5 7 7.5 12 0 Z"/>
+    <path d="M 4 -4.5 Q 2 0 4 4.5 M -2 -5.8 Q 0 -9.5 4 -6.2 M -1 -5.2 Q -2.5 0 -1 5.2"/>
+    <circle cx="7.5" cy="-1.5" r="0.9"/>
+    </g>
+    <g transform="translate(184, 62) rotate(14) scale(-1, 1)">
+    <path d="M 14 0 C 9 -4.2 3 -5 -2 -4.5 L -5 -10.5 L -6.2 -4 C -9 -3 -11 -1.5 -12 -1 L -16.5 -5.8 L -14 0 L -16.5 5.8 L -12 1 C -9 3.5 -3 4.5 3 4 C 9 3.5 12 2 14 0 Z"/>
+    <path d="M 1 3.8 L -2 8 L -3 3.5 M 4.5 -1.5 L 4 1.5 M 2.5 -1.5 L 2 1.5 M 9 2 Q 11 1.6 12 0.8"/>
+    <circle cx="9.5" cy="-1.2" r="0.8"/>
+    </g>
+    <g transform="translate(126, 98) rotate(-8)">
+    <path d="M 6 0 C 3 -3.5 -2 -3.5 -5 -1 L -8.5 -3.2 L -7.5 0 L -8.5 3.2 L -5 1 C -2 3.5 3 3.5 6 0 Z"/>
+    <circle cx="3.2" cy="-0.6" r="0.6"/>
+    </g>
+    <g transform="translate(138, 152) rotate(10) scale(-1, 1)">
+    <path d="M 10 0 C 6 -5 2 -11 -4 -12 C -3 -6 -6 -3 -9 -1.5 L -13 -4.5 L -11.2 0 L -13 4.5 L -9 1.5 C -6 3 -3 6 -4 12 C 2 11 6 5 10 0 Z"/>
+    <path d="M 2.5 -6 Q 0.8 0 2.5 6 M -2 -8.2 Q -3.5 0 -2 8.2"/>
+    <circle cx="5.8" cy="-1" r="0.8"/>
+    </g>
+    <g transform="translate(192, 140) rotate(-18) scale(-1, 1)">
+    <path d="M 11 0 C 6.5 -6.8 -3 -6 -8 -1.5 L -15 -7 C -12.5 -2 -12.5 2 -15 7 L -8 1.5 C -3 6 6.5 6.8 11 0 Z"/>
+    <path d="M 2 -4.5 Q -1 -9 -5 -7 M 2 4.5 Q -1 9 -5 7 M 5 -3.8 Q 3.5 0 5 3.8"/>
+    <circle cx="7" cy="-1.3" r="0.8"/>
+    </g>
+    <g transform="translate(56, 178) rotate(-10)">
+    <path d="M 8 -7.5 L 4 -7.5 C 4 -9.5 1.5 -11 -1 -10 C -4 -8.5 -4 -3 -2.5 2 C -1 7 -3 11 0.5 11.5 C 3.5 12 4.5 9 2.5 7.5 C 1 6.5 0 8.5 1.5 9"/>
+    <path d="M 8 -7.5 L 8 -6 L 4.5 -5.5 C 3 -3 5 0 3.5 4 C 2.5 6.5 0.5 8 -1.5 7.5"/>
+    <path d="M -3.5 -2 Q -6.5 0 -3 2.5"/>
+    <circle cx="3" cy="-7.5" r="0.8"/>
+    </g>
+    <g transform="translate(194, 196) rotate(12)">
+    <circle cx="0" cy="0" r="8"/>
+    <path d="M -8 -2 L -12.5 -4.5 L -11.5 0 L -12.5 4.5 L -8 2"/>
+    <path d="M -3.5 -7.2 L -4.5 -10 M 1 -8 L 1.5 -10.8 M 5.5 -5.8 L 7.5 -7.8 M -3.5 7.2 L -4.5 10 M 1.5 7.8 L 2 10.5"/>
+    <path d="M -1.5 1.5 Q -4 3 -1 4.5 M 5.8 2 Q 7.2 2.8 7.8 1.5"/>
+    <circle cx="4.2" cy="-2" r="0.9"/>
+    </g>
+    <circle cx="84" cy="43" r="2.2"/>
+    <circle cx="70" cy="166" r="2"/>
+    <circle cx="118" cy="146" r="2.2"/>
+    <circle cx="212" cy="190" r="2"/>
+    <path d="M 40 118 Q 44 115 48 118 T 56 118"/>
+    <path d="M 148 206 Q 152 203 156 206 T 164 206"/>
+    </g>
+    <g fill="currentColor" fill-opacity="${o(.06)}">
+    <circle cx="89" cy="37" r="1.5"/>
+    <circle cx="74" cy="160" r="1.4"/>
+    <circle cx="113" cy="140" r="1.5"/>
+    <circle cx="98" cy="34" r="1.6"/>
+    </g>
+  </svg>`;
+}
+const PATTERNS = {bubbles: bubblesSvg, doodles: doodlesSvg, cosmic: cosmicSvg, fish: fishSvg};
 function chatPattern(kind, acc, mode, preview = false) {   // preview: the settings' tiles, small, so stronger
   if (!PATTERNS[kind]) return "none";
   const k = preview ? 3 : {light: .5, dark: .32, black: .7}[mode] || .5;
@@ -241,7 +317,8 @@ table.um .n{text-align:right;font-variant-numeric:tabular-nums}
 .seg button{border:0;background:none;padding:6px 12px;border-radius:8px;color:var(--muted);font-size:13px}
 .seg button.act{background:var(--panel);color:var(--text);box-shadow:0 0 0 1px var(--line)}
 /* chat background: a tile per pattern, the pattern on the chat's own background */
-.bgpick{display:flex;gap:8px;flex:none}
+.bgpick{display:flex;flex-wrap:wrap;gap:8px;flex:none}
+.srow.bgrow{flex-wrap:wrap;row-gap:12px}                      /* a narrow window: the tiles go under the text */
 .bgpick button{width:92px;height:66px;border:1px solid var(--line);border-radius:10px;background-color:var(--bg);background-size:100px 100px;background-position:-4px -6px;display:flex;align-items:flex-end;justify-content:center;padding:0 0 5px;font-size:12px;color:var(--muted)}
 .bgpick button span{background:var(--bg);padding:0 5px;border-radius:5px}
 .bgpick button:hover{border-color:var(--accent)}
@@ -1612,7 +1689,7 @@ function renderAppearance() {
     <div class="srow"><div><b>Akzentfarbe</b><p>Wird für Schaltflächen, Links und Hervorhebungen verwendet.</p></div>
       <div class="sw">${Object.entries(ACCENTS).map(([k, v]) => `<button class="dot${a.accent === k ? " act" : ""}" data-acc="${k}" title="${v[2]}" style="background:${v[dark ? 1 : 0]}"></button>`).join("")}
         <label class="custom" title="Eigene Farbe"><input type="color" id="accCustom" value="${custom ? a.accent : accentFor(a, dark)}">Eigene</label></div></div>
-    <div class="srow"><div><b>Chat-Hintergrund</b><p>Ein dezentes Muster hinter den Nachrichten, in der Akzentfarbe.</p></div>
+    <div class="srow bgrow"><div><b>Chat-Hintergrund</b><p>Ein dezentes Muster hinter den Nachrichten, in der Akzentfarbe.</p></div>
       <div class="bgpick">${Object.entries(CHAT_BGS).map(([k, l]) => `<button data-chatbg="${k}" class="${a.chatbg === k ? "act" : ""}" `
         + `style='background-image:${chatPattern(k, accentFor(a, dark), resolvedMode(a.mode), true)}'><span>${l}</span></button>`).join("")}</div></div>`;
   $("accCustom").oninput = e => { const a2 = {...loadAppearance(), accent: e.target.value}; try { localStorage.appearance = JSON.stringify(a2); } catch {} applyAppearance(a2); };

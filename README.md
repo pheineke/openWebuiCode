@@ -166,7 +166,7 @@ Anmeldebildschirm; Hochschule und Benutzername sind dann schon eingetragen. Abme
   filtert nach Zeitraum (heute, 7 oder 30 Tage, dieses Jahr oder von–bis).
 - **Strg+,** öffnet die Einstellungen (Darstellung, Chats, Anbieter, Nutzung). Unter
   **Darstellung**: Farbschema, Akzentfarbe und der **Chat-Hintergrund** (schlicht oder ein dezentes Muster in der
-  Akzentfarbe: Blasen, Doodles mit Entwickler-Symbolen oder Kosmos mit Planeten und Sternen).
+  Akzentfarbe: Blasen, Doodles mit Entwickler-Symbolen, Kosmos mit Planeten und Sternen oder Fische).
 
 ## Aktualisieren
 
