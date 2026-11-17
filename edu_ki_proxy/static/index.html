@@ -168,6 +168,8 @@ html.sb-collapsed #topbar{padding-left:10px}
 .chat .pinmark{display:grid;place-items:center;color:var(--accent);flex:none;padding:0 2px}   /* pinned, at rest */
 .chat .pinmark svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .chat:hover .pinmark,.chat.menuopen .pinmark{display:none}
+.chat.titling>span{animation:titling 1.1s ease-in-out infinite}          /* a model is writing its title */
+@keyframes titling{50%{opacity:.35}}
 .chat .pmark{width:14px;height:14px;flex:none;object-fit:contain;border-radius:3px;margin:0 2px;opacity:.5;filter:saturate(.55)}   /* the provider's symbol, muted like the text beside it */
 .chat.active .pmark{opacity:.75}
 .chat:hover .pmark,.chat.menuopen .pmark{display:none}
@@ -559,7 +561,21 @@ select.plain option{background:var(--panel);color:var(--text)}
 .scard{width:min(620px,92vw);align-self:flex-start;margin-top:12vh}
 #sq{font:inherit;font-size:15px;padding:9px 12px}
 #sres{max-height:52vh;overflow:auto;display:flex;flex-direction:column;gap:2px}
-.sr{padding:8px 10px;border-radius:8px;cursor:pointer}
+.sr{padding:8px 10px;border-radius:8px;cursor:pointer;display:flex;align-items:baseline;gap:14px}
+.sr .srm{flex:1;min-width:0}
+.sr time{flex:none;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}   /* the date, at the far right */
+.sqrow{display:flex;gap:8px}
+.sqrow #sq{flex:1;min-width:0}
+.sfbtn{flex:none;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--bg);color:var(--muted);border-radius:8px;padding:0 11px;font-size:13px}
+.sfbtn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linejoin:round}
+.sfbtn:hover,.sfbtn.open{border-color:var(--accent);color:var(--text)}
+.sfbtn.on{color:var(--accent);border-color:var(--accent)}
+.sfbtn span:empty{display:none}
+.sfrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px}
+.sfrow[hidden]{display:none}
+.sfdates{display:inline-flex;align-items:center;gap:6px;color:var(--muted)}
+.sfdates[hidden]{display:none}
+.sfdates input{font:inherit;font-size:13px;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:5px 8px;color-scheme:light dark}
 .sr.act,.sr:hover{background:var(--side)}
 .sr b{display:block;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sr small{display:block;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -656,9 +672,10 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
 .providerCard small{color:var(--muted)}
 .pform{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px 0 4px}
 .pform label{display:flex;flex-direction:column;gap:4px;font-weight:550;font-size:13px}
-.pform input,.pform select{font:inherit;font-size:14px;font-weight:400;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+.pform input,.pform select,.srow select{font:inherit;font-size:14px;font-weight:400;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
 /* WebKitGTK draws <select> itself, light whatever the page's colours; drawn by the page instead, with a chevron in theme colours */
-.pform select{appearance:none;-webkit-appearance:none;padding-right:30px;cursor:pointer;background-repeat:no-repeat;background-size:5px 5px;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 16px) 55%,calc(100% - 11px) 55%}
+.srow select{max-width:270px;flex:none}
+.pform select,.srow select{appearance:none;-webkit-appearance:none;padding-right:30px;cursor:pointer;background-repeat:no-repeat;background-size:5px 5px;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 16px) 55%,calc(100% - 11px) 55%}
 .pform select:focus{outline:none;border-color:var(--accent)}
 .pform .wide{grid-column:1/-1}
 .uhead.addhead{align-items:center;margin-bottom:0}            /* the add button in the title row, not below the form */
@@ -741,7 +758,7 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
 </div>
 </div>
 <div class="overlay" id="settings"><div class="sbig">
-  <div class="snav"><h4>Einstellungen</h4><div class="act" data-page="appearance">Darstellung</div><div data-page="providers">Anbieter</div><div data-page="usage">Nutzung</div><div data-page="updates">Updates</div>
+  <div class="snav"><h4>Einstellungen</h4><div class="act" data-page="appearance">Darstellung</div><div data-page="chats">Chats</div><div data-page="providers">Anbieter</div><div data-page="usage">Nutzung</div><div data-page="updates">Updates</div>
     <div class="slogout" id="logout" title="Bei allen Anbietern abmelden">Abmelden</div></div>
   <div class="scont" id="scont"></div>
   <button class="sx" id="sclose" title="Schließen"><svg class="xm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
@@ -759,7 +776,10 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
   <div class="prow"><button id="dCancel" type="button">Abbrechen</button><button class="ok" id="dOk" type="button">OK</button></div>
 </div></div>
 <div class="overlay" id="search"><div class="pcard scard">
-  <input id="sq" placeholder="Chats durchsuchen…" autocomplete="off" spellcheck="false">
+  <div class="sqrow"><input id="sq" placeholder="Chats durchsuchen…" autocomplete="off" spellcheck="false">
+    <button class="sfbtn" id="sfBtn" type="button" title="Nach Zeitraum filtern"><svg viewBox="0 0 24 24"><path d="M4 5h16l-6 7.5V19l-4 2v-8.5z"/></svg><span id="sfLbl"></span></button></div>
+  <div class="sfrow" id="sfRow" hidden><div class="seg" id="sfSeg"></div>
+    <span class="sfdates" id="sfDates" hidden><input type="date" id="sfFrom" title="Von"><span>–</span><input type="date" id="sfTo" title="Bis"></span></div>
   <div id="sres"></div>
 </div></div>
 <div class="overlay" id="sshModal"><div class="pcard sshcard">
@@ -1058,7 +1078,7 @@ const chatUrl = c => `/app/chats/${enc(c.id)}${c.source === "local" ? "" : owq(c
 async function updateChat(c, fields, failTitle) {
   Object.assign(c, fields);                 // shown at once, saved in the background
   if (fields.title) renamed.set(c.id, {title: fields.title, at: Date.now()});
-  if (chat && chat.id === c.id && fields.title) { chat.title = fields.title; render(); }
+  if (chat && chat.id === c.id && fields.title) { chat.title = fields.title; chat.titleAuto = false; render(); }
   if (chat && chat.id === c.id && "project" in fields) chat.project = fields.project;
   renderList();
   try { await api(chatUrl(c), json("PATCH", fields)); } catch (e) { notice(failTitle, errMsg(e)); }
@@ -1105,6 +1125,7 @@ function openChatMenu(el, c, btn) {
     + (mine ? menuRow("move", BACK, "Aus dem Projekt nehmen", "", ' data-proj=""') : "")
     + (namedProjects.length ? "<hr>" : "") + menuRow("movenew", STACK, "Neues Projekt…");
   openMenuCard(el, btn, menuRow("pin", PIN, c.pinned ? "Lösen" : "Anpinnen") + menuRow("rename", PEN, "Umbenennen")
+    + menuRow("retitle", SPARK, "Titel neu erzeugen")
     + `<div class="item has-fly" data-cm="movemenu"><span class="mrow"><i class="mi">${STACK}</i><span>In Projekt verschieben</span></span><span class="chev">›</span><div class="fly">${moves}</div></div>`
     + "<hr>" + menuRow("delete", TRASH, "Löschen", "danger"), {c});
 }
@@ -1121,10 +1142,86 @@ $("chatMenu").onclick = e => {
   const el = [...document.querySelectorAll(".chat")].find(x => x.dataset.cid === c.id && x.dataset.src === (c.source || ""));
   if (it.dataset.cm === "pin") updateChat(c, {pinned: !c.pinned}, c.pinned ? "Lösen fehlgeschlagen" : "Anpinnen fehlgeschlagen");
   else if (it.dataset.cm === "rename" && el) startRename(el, c);
+  else if (it.dataset.cm === "retitle") retitle(c);
   else if (it.dataset.cm === "delete") deleteChat(c);
 };
-document.addEventListener("click", e => { if (chatMenuFor && !e.target.closest("#chatMenu, .chat .more")) closeChatMenu(); }, true);
+// Any press outside the card closes it: a press, not a click (one that starts a text selection never clicks), and
+// leaving the window does too (clicking the window's header strip, another app).
+document.addEventListener("pointerdown", e => { if (chatMenuFor && !e.target.closest("#chatMenu, .chat .more")) closeChatMenu(); }, true);
+window.addEventListener("blur", closeChatMenu);
 $("chats").addEventListener("scroll", closeChatMenu);
+// ---- chat titles, written by a model (Einstellungen → Chats → Titel-Modell) ----------------------------
+// After the first answer a model replaces the first question as the title; "Titel neu erzeugen" (⋯) sums up the
+// whole chat. The model: the one set there, else the chat's own; "off" leaves the question (⋯ still works).
+const titlePref = () => { try { return localStorage.titleModel || ""; } catch { return ""; } };
+function titleModelFor(model, asked = false) {
+  const p = titlePref();
+  if (p && p !== "off" && MODEL_META[p]) return p;
+  if (p === "off" && !asked) return null;
+  return MODEL_META[model] ? model : ($("model").value || null);
+}
+function pathOf(h) {                        // the shown branch of a stored history, root first
+  const out = [], m = (h && h.messages) || {};
+  for (let id = h && h.currentId; id && m[id]; id = m[id].parentId) out.unshift(m[id]);
+  return out;
+}
+function transcriptOf(msgs, whole) {
+  const cut = (t, n) => (t = String(t || "").trim()).length > n ? t.slice(0, n) + " …" : t;
+  const lines = (whole ? msgs : msgs.slice(0, 2)).filter(m => m.content)
+    .map(m => `${m.role === "user" ? "User" : "Assistant"}: ${cut(m.content, whole ? 1500 : 3000)}`);
+  const text = lines.join("\n\n");
+  return text.length > 12000 ? text.slice(0, 4000) + "\n\n[…]\n\n" + text.slice(-8000) : text;   // long chats: start and end
+}
+async function askTitle(model, transcript, whole) {
+  const sys = (whole ? "Write a short title that sums up this whole conversation." : "Write a short title for this conversation, from its first question and answer.")
+    + " 2 to 6 words, in the language of the conversation. Reply with the title only: no quotes, no full stop, no explanation.";
+  const r = await api("/v1/chat/completions", json("POST", {model, stream: false,
+    messages: [{role: "system", content: sys}, {role: "user", content: transcript}]}));
+  const raw = String((((r.choices || [])[0] || {}).message || {}).content || "").replace(/<think>[\s\S]*?<\/think>/g, "");
+  const line = raw.split("\n").map(x => x.trim()).find(Boolean) || "";
+  return line.replace(/^(title|titel)\s*:\s*/i, "").replace(/^[#*\s"'„“”«»]+|[*\s"'„“”«».]+$/g, "").replace(/\s+/g, " ").slice(0, 80);
+}
+const listItemOf = ch => list.find(x => x.id === ch.id && (x.source || "") === (ch.source || "")) || {id: ch.id, source: ch.source, provider: ch.provider};
+async function autoTitle(ch) {              // once, after the first answer; quiet when it fails (the question stays)
+  const model = titleModelFor(ch.model); if (!model) return;
+  ch.titleAuto = false;
+  const first = ch.title, id = ch.id;
+  titling.add(id); renderList();
+  try {
+    const title = await askTitle(model, transcriptOf(pathOf(ch.history), false), false);
+    if (title && ch.title === first) await updateChat(listItemOf(ch), {title}, "Titel nicht gespeichert");   // not renamed meanwhile
+  } catch (e) { applog("title", errMsg(e)); }
+  finally { titling.delete(id); renderList(); }
+}
+async function retitle(c) {                 // ⋯ → Titel neu erzeugen: from the whole chat so far
+  const open = chat && chat.id === c.id && (chat.source || "") === (c.source || "");
+  titling.add(c.id); renderList();
+  try {
+    let h = open ? chat.history : null, model = open ? chat.model : null;
+    if (!open) { const r = await api(`/app/chats/${enc(c.id)}${owq(c.provider)}`); h = (r.chat || {}).history; model = loadedModel(r, c.provider); }
+    const msgs = pathOf(h).filter(m => m.content);
+    if (!msgs.length) throw new Error("Der Chat hat noch keine Nachrichten.");
+    const tm = titleModelFor(model, true); if (!tm) throw new Error("Kein Modell verfügbar.");
+    const title = await askTitle(tm, transcriptOf(msgs, true), true);
+    if (!title) throw new Error("Das Modell hat keinen Titel geschrieben.");
+    await updateChat(c, {title}, "Titel nicht gespeichert");
+  } catch (e) { notice("Titel nicht erzeugt", errMsg(e)); }
+  finally { titling.delete(c.id); renderList(); }
+}
+function renderChatSettings() {
+  const cur = titlePref(), groups = {};
+  for (const [id, m] of Object.entries(MODEL_META)) (groups[m.providerName || m.provider] ||= []).push([id, m.name]);
+  const gone = cur && cur !== "off" && !MODEL_META[cur];
+  $("scont").innerHTML = `<h2>Chats</h2>
+    <div class="srow"><div><b>Titel-Modell</b><p>Schreibt nach der ersten Antwort einen kurzen Titel für den Chat; „Titel neu erzeugen“ im ⋯-Menü
+      eines Chats fasst den ganzen Chat zusammen. Ein festes, kostenloses Modell spart Budget, wenn du mit kostenpflichtigen Modellen chattest.
+      „Aus“ lässt die erste Frage als Titel stehen.</p></div>
+      <select id="titleModel"><option value="">Modell des Chats</option><option value="off">Aus</option>
+        ${Object.entries(groups).map(([g, ms]) => `<optgroup label="${esc(g)}">${ms.map(([id, n]) => `<option value="${esc(id)}">${esc(n)}</option>`).join("")}</optgroup>`).join("")}
+        ${gone ? `<option value="${esc(cur)}">${esc(cur)} (nicht mehr da: Modell des Chats)</option>` : ""}</select></div>`;
+  $("titleModel").value = cur;
+  $("titleModel").onchange = e => { try { localStorage.titleModel = e.target.value; } catch {} };
+}
 async function deleteChat(c) {
   const where = c.source === "local" ? "" : ` Er wird auch bei ${c.provider_name || "Open WebUI"} gelöscht.`;
   if (!await dialog({title: "Chat löschen?", text: `„${c.title || "Chat"}“ wird gelöscht.${where} Das lässt sich nicht rückgängig machen.`,
@@ -1214,9 +1311,10 @@ function newChatIn(p) {
 let provInfo = {};                          // provider id -> its public record (from /app/status, /app/providers)
 const setProvInfo = list => { provInfo = Object.fromEntries((list || []).map(p => [p.id, p])); };
 const provIconUrl = pid => { const p = provInfo[pid]; return p && p.icon ? `/app/provider-icon/${enc(pid)}?v=${enc(p.icon)}` : ""; };
+const titling = new Set();                 // chat ids whose title a model is writing right now (shown faded)
 function chatItem(c) {
   const el = document.createElement("div");
-  el.className = "chat" + (chat && chat.id === c.id ? " active" : "") + (c.pinned ? " pinned" : "");
+  el.className = "chat" + (chat && chat.id === c.id ? " active" : "") + (c.pinned ? " pinned" : "") + (titling.has(c.id) ? " titling" : "");
   el.dataset.cid = c.id; el.dataset.src = c.source || "";
   const icon = c.source !== "local" && provIconUrl(c.provider), name = c.provider_name || (provInfo[c.provider] || {}).name || "";
   const nameTag = name ? `<small class="d">${esc(name)}</small>` : "";
@@ -1378,6 +1476,7 @@ function renderSettings() {
   if (settingsPage === "usage") renderUsage();
   else if (settingsPage === "providers") renderProviders();
   else if (settingsPage === "updates") renderUpdates();
+  else if (settingsPage === "chats") renderChatSettings();
   else renderAppearance();
 }
 const providerTypeLabel = t => (providerTypes[t] || {}).label || t;
@@ -1574,22 +1673,64 @@ function mark(text, q) {
   while ((m = rx.exec(text))) { out += esc(text.slice(last, m.index)) + "<mark>" + esc(m[0]) + "</mark>"; last = m.index + m[0].length; if (!m[0]) rx.lastIndex++; }
   return out + esc(text.slice(last));
 }
+// Time filter: by the chat's last change, applied to whatever the search found.
+const RANGES = [["all", "Jederzeit"], ["today", "Heute"], ["week", "7 Tage"], ["month", "30 Tage"], ["year", "Dieses Jahr"], ["custom", "Zeitraum"]];
+let sRange = "all";
+function rangeBounds() {                    // [from, to) in seconds, or null for any time
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+  const day = n => { const d = new Date(d0); d.setDate(d.getDate() - n); return d.getTime() / 1000; };
+  if (sRange === "today") return [day(0), Infinity];
+  if (sRange === "week") return [day(6), Infinity];
+  if (sRange === "month") return [day(29), Infinity];
+  if (sRange === "year") return [new Date(d0.getFullYear(), 0, 1).getTime() / 1000, Infinity];
+  if (sRange === "custom") {
+    const f = $("sfFrom").value, t = $("sfTo").value, at = v => new Date(v + "T00:00").getTime() / 1000;
+    return f || t ? [f ? at(f) : 0, t ? at(t) + 86400 : Infinity] : null;
+  }
+  return null;
+}
+function renderFilter() {
+  const dm = v => v ? v.split("-").reverse().slice(0, 2).join(".") + "." : "…";
+  $("sfSeg").innerHTML = RANGES.map(([k, l]) => `<button type="button" data-range="${k}" class="${sRange === k ? "act" : ""}">${l}</button>`).join("");
+  $("sfDates").hidden = sRange !== "custom";
+  const b = rangeBounds();
+  $("sfBtn").classList.toggle("on", !!b);
+  $("sfLbl").textContent = !b ? "" : sRange === "custom" ? `${dm($("sfFrom").value)}–${dm($("sfTo").value)}` : RANGES.find(r => r[0] === sRange)[1];
+}
+$("sfBtn").onclick = () => { $("sfRow").hidden = !$("sfRow").hidden; $("sfBtn").classList.toggle("open", !$("sfRow").hidden); renderFilter(); $("sq").focus(); };
+$("sfSeg").onclick = e => {
+  const b = e.target.closest("[data-range]"); if (!b) return;
+  sRange = b.dataset.range; renderFilter(); runSearch();
+  if (sRange === "custom" && !$("sfFrom").value) $("sfFrom").focus(); else $("sq").focus();
+};
+$("sfFrom").onchange = $("sfTo").onchange = () => { renderFilter(); runSearch(); };
+function shortWhen(ts) {                    // today: the time; yesterday; this year: day and month; else the full date
+  if (!ts) return "";
+  const d = new Date(ts * 1000), t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  if (d >= t0) return d.toLocaleTimeString("de-DE", {hour: "2-digit", minute: "2-digit"});
+  if (d >= new Date(t0.getTime() - 86400e3)) return "Gestern";
+  if (d.getFullYear() === t0.getFullYear()) return d.toLocaleDateString("de-DE", {day: "numeric", month: "short"});
+  return d.toLocaleDateString("de-DE", {day: "2-digit", month: "2-digit", year: "numeric"});
+}
 async function runSearch() {
   const q = $("sq").value.trim(), seq = ++sSeq;
   let hits;
-  if (!q) hits = list.slice(0, 30);
+  if (!q) hits = list;
   else {
     try { hits = await api(`/app/chats/search?q=${enc(q)}`); }
     catch { hits = list.filter(c => (c.title || "").toLowerCase().includes(q.toLowerCase())); }   // fall back to titles
   }
   if (seq !== sSeq) return;                              // a newer keystroke superseded this answer
-  sHits = hits; sIdx = 0; renderSearch(q);
+  const b = rangeBounds();
+  if (b) hits = hits.filter(c => (c.updated_at || 0) >= b[0] && (c.updated_at || 0) < b[1]);
+  sHits = q ? hits : hits.slice(0, b ? 60 : 30); sIdx = 0; renderSearch(q);
 }
 function renderSearch(q) {
   $("sres").innerHTML = sHits.length ? sHits.map((c, i) => {
     const snip = q && c.snippet && c.snippet !== c.title ? `<small>${mark(c.snippet, q)}</small>` : "";
-    return `<div class="sr${i === sIdx ? " act" : ""}" data-i="${i}"><b>${mark(c.title || "Chat", q)}</b>${snip}</div>`;
-  }).join("") : `<div class="snone">Keine Treffer</div>`;
+    return `<div class="sr${i === sIdx ? " act" : ""}" data-i="${i}"><div class="srm"><b>${mark(c.title || "Chat", q)}</b>${snip}</div>`
+      + (c.updated_at ? `<time title="${esc(when(c.updated_at))}">${esc(shortWhen(c.updated_at))}</time>` : "") + `</div>`;
+  }).join("") : `<div class="snone">${rangeBounds() ? "Keine Treffer in diesem Zeitraum" : "Keine Treffer"}</div>`;
   const a = $("sres").querySelector(".act"); if (a) a.scrollIntoView({block: "nearest"});
 }
 function pickHit(i) { const c = sHits[i]; if (c) { closeSearch(); openChat(c.id, c.provider, c.source); } }
@@ -1617,6 +1758,12 @@ function newChat(reload = true) {
   resetPanel(); render(); if (reload) loadList();
 }
 
+function loadedModel(c, provider) {         // the model a loaded chat ran with, or the selected one when it is gone
+  const h = c.chat || {}, pid = c.provider || provider;
+  let model = (MODEL_META[h.app_model] ? h.app_model : null) || c.model || (h.models || [])[0] || $("model").value;
+  if (!MODEL_META[model] && pid && MODEL_META[`${pid}/${model}`]) model = `${pid}/${model}`;   // Open WebUI stores the bare model name
+  return MODEL_META[model] ? model : $("model").value;
+}
 async function openChat(id, provider, source) {
   if (streaming) streaming.abort();
   editId = null;
@@ -1625,10 +1772,7 @@ async function openChat(id, provider, source) {
   const r = renamed.get(id); if (r && r.at >= asked) c.title = r.title;   // renamed while this was loading
   const h = c.chat || {};
   const savedConn = h.conn && connOf(h.conn) ? h.conn : null;   // a connection that is gone: fall back to local
-  let model = (MODEL_META[h.app_model] ? h.app_model : null) || c.model || (h.models || [])[0] || $("model").value;
-  const pid = c.provider || provider;
-  if (!MODEL_META[model] && pid && MODEL_META[`${pid}/${model}`]) model = `${pid}/${model}`;   // Open WebUI stores the bare model name
-  if (!MODEL_META[model]) model = $("model").value;              // that model is gone: carry on with the selected one
+  const model = loadedModel(c, provider);
   chat = {id, title: c.title || "Chat", conn: savedConn, workdir: h.conn && !savedConn ? null : (h.workdir || null), perm: "ask", model,
           provider: c.provider || provider || modelProvider(model), source: c.source || source || (modelIsOW(model) ? "openwebui" : "local"),
           skills: Array.isArray(h.skills) ? h.skills : [], webSearch: !!h.webSearch, cards: h.cards === undefined ? cardPref() : !!h.cards, net: !!h.net,
@@ -3182,12 +3326,14 @@ async function send(text, attachments = [], parent = chat.history.currentId) {  
   if (attachments.length) u.attachments = attachments;
   if (parent && m[parent]) m[parent].childrenIds.push(u.id);
   m[u.id] = u;
-  if (chat.title === "Neuer Chat") chat.title = (text || attachments.map(a => a.name).join(", ")).replace(/\s+/g, " ").slice(0, 50);
+  if (chat.title === "Neuer Chat") {         // for now; a model writes the real one after the first answer (autoTitle)
+    chat.title = (text || attachments.map(a => a.name).join(", ")).replace(/\s+/g, " ").slice(0, 50); chat.titleAuto = true;
+  }
   await reply(u);
 }
 
 async function reply(u) {          // a new answer to user message u (also: "regenerate"), with the model now selected
-  const m = chat.history.messages;
+  const ch = chat, m = chat.history.messages;
   const a = {id: uuid(), parentId: u.id, childrenIds: [], role: "assistant", content: "", steps: [], model: chat.model,
              modelName: $("model").selectedOptions[0].text, modelIdx: 0, timestamp: now(), done: false, started: Date.now()};
   u.childrenIds.push(a.id);
@@ -3220,6 +3366,7 @@ async function reply(u) {          // a new answer to user message u (also: "reg
   a.done = true; streaming = null; render();
   if (a.content || a.steps.some(s => s.calls.length) || !a.error) { try { await save(); } catch (e) { a.error = "Sync fehlgeschlagen: " + e.message; render(); } }
   loadList();
+  if (ch.titleAuto && ch.id && a.content && !a.error && !ctrl.signal.aborted && branch().filter(x => x.role === "user").length === 1) autoTitle(ch);
 }
 
 let submitting = false;          // waiting for attachments that are still being read

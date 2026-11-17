@@ -159,7 +159,12 @@ Anmeldebildschirm; Hochschule und Benutzername sind dann schon eingetragen. Abme
 - **Seitenleiste**: **⋯** am Ende eines Chats (beim Darüberfahren) öffnet **Anpinnen** (oben unter „Angepinnt“),
   **Umbenennen** (auch per Doppelklick; Enter speichert, Esc bricht ab) und **Löschen**. Bei Open-WebUI-Chats gilt
   das auch in dessen Weboberfläche.
-- **Strg+K** durchsucht Chats, **Strg+,** öffnet die Einstellungen (Darstellung, Anbieter, Nutzung). Unter
+- **Chat-Titel**: Nach der ersten Antwort schreibt ein Modell einen kurzen Titel (statt der ersten Frage); im
+  ⋯-Menü eines Chats fasst **Titel neu erzeugen** den ganzen Chat zusammen. Welches Modell das macht, steht unter
+  Einstellungen → **Chats** → **Titel-Modell** (Standard: das Modell des Chats; „Aus“ lässt die Frage stehen).
+- **Strg+K** durchsucht Chats; rechts steht, wann ein Chat zuletzt geändert wurde, und der Trichter neben dem Feld
+  filtert nach Zeitraum (heute, 7 oder 30 Tage, dieses Jahr oder von–bis).
+- **Strg+,** öffnet die Einstellungen (Darstellung, Chats, Anbieter, Nutzung). Unter
   **Darstellung**: Farbschema, Akzentfarbe und der **Chat-Hintergrund** (schlicht oder ein dezentes Muster in der
   Akzentfarbe: Blasen, Doodles mit Entwickler-Symbolen oder Kosmos mit Planeten und Sternen).
 
