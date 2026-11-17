@@ -54,10 +54,17 @@ def tool_instruction(tools: list[dict]) -> str:
 # block is recognised by its first invoke: a garbled or missing calls tag does not matter.
 _DS = r"<\s*[｜|]+\s*DSML\s*[｜|]+\s*"
 _DSE = r"<\s*/\s*[｜|]+\s*DSML\s*[｜|]+\s*"
-_OPEN = re.compile(r"```tool(?:_calls?|s)?[ \t]*(?:\r?\n|(?=[\[{]))"
-                   r"|(?P<ds>(?:<[^<>\n]{0,30}calls\s*>\s*)?(?=" + _DS + r"invoke\b))")
+# Besides ```tool (also ```Tool, ```tool_code, ```tool_use) a call can come in a ```json or bare ``` block, or as
+# bare JSON on a line of its own: Claude behind EDU-KI now and then answers '\n{"name": ...}\n```', its opening
+# fence gone (left in its hidden thinking, it seems).  Those looser forms ("loose", "bare") count only when the
+# JSON starts with the name of a tool the request offers, so a package.json in a ```json block stays text.
+_OPEN = re.compile(r"```(?i:tool(?:[_-]?(?:calls?|code|use|s))?)[ \t]*(?:\r?\n|(?=[\[{]))"
+                   r"|(?P<ds>(?:<[^<>\n]{0,30}calls\s*>\s*)?(?=" + _DS + r"invoke\b))"
+                   r"|(?P<loose>```(?i:json)?[ \t]*\r?\n)"
+                   r'|(?P<bare>(?m:^)[ \t]*)(?=(?:\[\s*)?\{\s*"name"\s*:\s*")')
 _HOLD = 64      # longest opener we must be able to see whole, plus slack
 _NAME = re.compile(r'\s*\{\s*"name"\s*:\s*"([\w.\-]+)"')   # a single call's name, before its arguments
+_LEAD = re.compile(r'\s*(?:\[\s*)?\{\s*"name"\s*:\s*"([\w.\-]+)"')  # the same, also of a list's first call
 _DS_NAME = re.compile(_DS + r'invoke\s+name\s*=\s*"([\w.\-]+)"')
 _DS_CLOSE = re.compile(r"<\s*/[^<>\n]{0,30}calls\s*>")
 _DS_INVOKE = re.compile(_DS + r'invoke\s+name\s*=\s*"([^"]+)"\s*>(.*?)' + _DSE + r"invoke\s*>", re.S)
@@ -91,13 +98,17 @@ class ToolStream:
     inside string arguments (a README with code samples, say) do not cut the call short.
     A call is announced ("call_start") as soon as its name is known, so the client can show
     "writing index.html" while a long block is still arriving.  Text after a call is dropped:
-    it can only be the model guessing the tool's result.  DeepSeek's DSML markup is read as well.
+    it can only be the model guessing the tool's result.  DeepSeek's DSML markup is read as well,
+    and with the offered tools' names (names) also the looser forms described at _OPEN.
     """
 
-    def __init__(self, enabled: bool):
+    def __init__(self, enabled: bool, names=()):
         self.enabled = enabled
+        self.names = set(names)
         self.buf = ""
+        self.bol = True         # buf starts at the start of a line
         self.opener = ""        # the opening fence of the block being read
+        self.kind = ""          # of that block: "tool", "ds" (DeepSeek markup), "loose" or "bare" (see _OPEN)
         self.dsml = False       # that block is DeepSeek markup, not JSON
         self.scan = 0           # in a block: where to look for the next closing fence candidate
         self.in_tool = False
@@ -120,36 +131,87 @@ class ToolStream:
         out: list[tuple[str, object]] = []
         while True:
             if not self.in_tool:
-                m = _OPEN.search(self.buf)
+                m = self._open()
                 if not m:
                     if len(self.buf) > _HOLD:
                         self._text(out, self.buf[:-_HOLD])
+                        self.bol = self.buf[-_HOLD - 1] == "\n"
                         self.buf = self.buf[-_HOLD:]
                     break
                 self._text(out, self.buf[:m.start()])
-                self.opener, self.buf, self.dsml = m.group(0), self.buf[m.end():], m.group("ds") is not None
-                self.in_tool, self.scan, self.peeked = True, 0, False
+                self.opener, self.buf = m.group(0), self.buf[m.end():]
+                self.kind = next((k for k in ("ds", "loose", "bare") if m.group(k) is not None), "tool")
+                self.dsml = self.kind == "ds"
+                self.in_tool, self.scan, self.peeked, self.bol = True, 0, False, False
                 continue
             dsml = self.dsml
             head = self.buf.lstrip()
             if not dsml and head and head[0] not in "[{":          # not JSON after all: plain text
+                if self.kind == "loose":                            # any ``` line: read on right after it
+                    self._text(out, self.opener)
+                    self.bol, self.in_tool = True, False
+                    continue
                 self._text(out, self.opener + self.buf)
+                self.bol = (self.opener + self.buf).endswith("\n")
                 self.buf, self.in_tool = "", False
                 continue
+            if not self.peeked and self.kind in ("loose", "bare"):
+                name = self._lead()
+                if name is None:
+                    break                                           # wait for the name
+                if name not in self.names:                          # some other JSON: text, and read on after it
+                    cut = 1 if self.kind == "bare" else 0
+                    self._text(out, self.opener + self.buf[:cut])
+                    self.buf, self.bol, self.in_tool = self.buf[cut:], self.kind == "loose", False
+                    continue
             if not self.peeked:
-                m = _DS_NAME.search(self.buf) if dsml else _NAME.match(self.buf)
+                m = _DS_NAME.search(self.buf) if dsml else _LEAD.match(self.buf) if self.kind != "tool" else _NAME.match(self.buf)
                 if m:
                     self.announced = {"id": "call_" + uuid.uuid4().hex[:12], "type": "function",
                                       "function": {"name": m.group(1), "arguments": ""}}
                     out.append(("call_start", self.announced))
                 self.peeked = bool(m) or (not dsml and head[:1] == "[") or len(self.buf) > _PEEK
-            span = self._close_dsml() if dsml else self._close()
+            span = self._close_dsml() if dsml else self._close_bare() if self.kind == "bare" else self._close()
             if span is None:
                 break
             block, closer, self.buf = self.buf[:span[0]], self.buf[span[0]:span[1]], self.buf[span[1]:]
             self.in_tool = False
             out.extend(self._parse(block, closer))
         return out
+
+    def _open(self):
+        """The next opener in buf.  A bare call must start a line; loose and bare forms need the tools' names."""
+        pos = 0
+        while m := _OPEN.search(self.buf, pos):
+            bare = m.group("bare") is not None
+            if (self.names or not (bare or m.group("loose") is not None)) and not (bare and m.start() == 0 and not self.bol):
+                return m
+            pos = m.start() + 1
+        return None
+
+    def _lead(self) -> str | None:
+        """Name of the call a loose or bare block starts with; None while it may still come, "" if it won't."""
+        m = _LEAD.match(self.buf)
+        if m:
+            return m.group(1)
+        flat = "".join(self.buf.split())
+        if len(self.buf) <= _PEEK and any(t.startswith(flat) or flat.startswith(t) and '"' not in flat[len(t):]
+                                          for t in ('{"name":"', '[{"name":"')):
+            return None
+        return ""
+
+    def _close_bare(self) -> tuple[int, int] | None:
+        """A bare call ends with its JSON, at the end of a line."""
+        while (j := self.buf.find("\n", self.scan)) >= 0:
+            self.scan = j + 1
+            if self.buf[:j].rstrip().endswith(("}", "]")):
+                try:
+                    json.loads(self.buf[:j])
+                    return j, j
+                except ValueError:
+                    continue
+        self.scan = len(self.buf)
+        return None
 
     def _close(self) -> tuple[int, int] | None:
         """Span of the closing fence, once the JSON before it parses.  Each candidate is
@@ -173,11 +235,13 @@ class ToolStream:
 
     def finish(self) -> list[tuple[str, object]]:
         out: list[tuple[str, object]] = []
-        if self.in_tool:
-            out.extend(self._parse(self.buf))
+        if self.in_tool and self.kind in ("loose", "bare") and not self.announced:
+            self._text(out, self.opener + self.buf)                 # never became a call
+        elif self.in_tool:
+            out.extend(self._parse(re.sub(r"\s*`{3,}\s*\Z", "", self.buf) if self.kind == "bare" else self.buf))
         else:
             self._text(out, self.buf)
-        self.buf, self.in_tool = "", False
+        self.buf, self.in_tool, self.bol = "", False, True
         trace.log("model output", cap=20000, tools=self.enabled, text=self.raw,
                   calls=[f"{c['function']['name']}({len(c['function']['arguments'])} chars)" for c in self.calls])
         self.raw = ""
@@ -594,7 +658,8 @@ async def chat(backend, p: dict, data: dict):
         await _close(r.body_iterator)
         return None
 
-    ts, model = ToolStream(True), data.get("model") or ""
+    names = [(t.get("function") or {}).get("name") for t in data.get("tools") or [] if isinstance(t, dict)]
+    ts, model = ToolStream(True, [n for n in names if n]), data.get("model") or ""
     if data.get("stream"):
         return StreamingResponse(_stream(resp.body_iterator, ts, model, again), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache"}, background=resp.background)
