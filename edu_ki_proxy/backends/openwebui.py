@@ -176,23 +176,13 @@ class OpenWebUI(Backend):
         return await self.send(p, "POST", path, headers={"Content-Type": "application/json"},
                                content=json.dumps(body).encode())
 
-    async def web_search(self, p: dict, messages: list[dict], model: str | None) -> dict:
-        """Open WebUI's web search, the way its own web UI runs it for a message: queries from its task model,
-        the search (its configured engine), then the pages, either returned directly or from the vector store."""
-        question = next((m["content"] for m in reversed(messages) if m.get("role") == "user" and m.get("content")), "")
-        if not question.strip():
-            raise ProxyError("Keine Frage zum Suchen.", 400)
-        queries = [question.strip()[:300]]
-        if model:
-            try:
-                r = await self._post_json(p, "v1/tasks/queries/completions",
-                                          {"model": model, "messages": messages, "prompt": question, "type": "web_search"})
-                text = r.json()["choices"][0]["message"]["content"] if r.status_code == 200 else ""
-                found = json.loads(text[text.rfind("{"):text.rfind("}") + 1]).get("queries") if "{" in text else None
-                if isinstance(found, list) and any(isinstance(q, str) and q.strip() for q in found):
-                    queries = [q.strip() for q in found if isinstance(q, str) and q.strip()][:3]
-            except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError, AttributeError, ProxyError):
-                pass                       # query generation is a nicety: the question itself works too
+    async def web_search(self, p: dict, query: str) -> dict:
+        """Open WebUI's web search for a query the answering model wrote (the app's web_search tool): the search
+        (its configured engine), then the pages, either returned directly or from the vector store."""
+        question = " ".join(query.split())[:300]
+        if not question:
+            raise ProxyError("Keine Suchanfrage.", 400)
+        queries = [question]
         r = await self._post_json(p, "v1/retrieval/process/web/search", {"queries": queries})
         if r.status_code == 404:
             raise ProxyError("Die Websuche hat nichts gefunden.", 404)

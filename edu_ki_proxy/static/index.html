@@ -1712,10 +1712,9 @@ const ext = p => (p.includes(".") ? p.split(".").pop() : "").toLowerCase();
 let curIdx = new Map();
 
 function statusHtml(m) {
-  if (m.searching) return `<div class="status"><span class="spin" style="--p:${Date.now() % 1000}"><i></i><i></i><i></i></span>Sucht im Web <span class="tm" data-t="${m.started || Date.now()}">0s</span></div>`;
   const s = m.steps && m.steps[m.steps.length - 1], c = s && s.calls && s.calls[s.calls.length - 1];
   if (c && c.status === "approval") return `<div class="status">Wartet auf Freigabe</div>`;
-  const verbs = {write_file: "Erstelle", edit_file: "Ändere", bash: "Führe aus", read_file: "Lese", list_dir: "Lese", grep: "Suche", glob: "Suche"};
+  const verbs = {write_file: "Erstelle", edit_file: "Ändere", bash: "Führe aus", read_file: "Lese", list_dir: "Lese", grep: "Suche", glob: "Suche", web_search: "Sucht im Web"};
   const v = c && (c.status === "running" || c.status === "pending") ? (verbs[c.name] || "Arbeite") : (s && s.content ? "Schreibe" : "Denke nach");
   const t0 = m.started || Date.now();
   return `<div class="status"><span class="spin" style="--p:${Date.now() % 1000}"><i></i><i></i><i></i></span>${v} <span class="tm" data-t="${t0}">${Math.floor((Date.now() - t0) / 1000)}s</span></div>`;
@@ -1921,11 +1920,13 @@ function callHtml(c) {
   }
   const title = {bash: "$ " + (a.command || ""), read_file: "Lesen " + (a.path || ""), write_file: "Schreiben " + (a.path || ""),
     edit_file: "Ändern " + (a.path || ""), list_dir: "Ordner " + (a.path || "."), glob: "Glob " + (a.pattern || ""),
-    grep: "Suche " + (a.pattern || "")}[c.name] || c.name;
+    grep: "Suche " + (a.pattern || ""), web_search: "Websuche: " + (a.query || "")}[c.name] || c.name;
   let detail = c.name === "write_file" ? (a.content || "") : c.name === "edit_file"
     ? (a.old_string || "").split("\n").map(l => "- " + l).join("\n") + "\n" + (a.new_string || "").split("\n").map(l => "+ " + l).join("\n")
     : c.name === "bash" ? (a.command || "") : "";
-  if (c.result) detail += (detail ? "\n\n" : "") + c.result;
+  if (c.name === "web_search" && c.meta && c.meta.hits) detail = c.meta.hits.length       // the pages, not their whole text
+    ? c.meta.hits.map(h => `[${h.n}] ${h.title}\n    ${h.url}`).join("\n") : "Nichts gefunden.";
+  else if (c.result) detail += (detail ? "\n\n" : "") + c.result;
   const label = {approval: "wartet auf Freigabe", running: "läuft…", done: "✓", error: "Fehler", denied: "abgelehnt", pending: "…"}[c.status] || "";
   const k = "c" + c.id, open = c.status === "approval" || openSet.has(k);
   // A command without sandbox is confirmed each time: no "Auto" here, and a word on what it may do.
@@ -2777,10 +2778,9 @@ $("skCont").addEventListener("click", e => {
   const el = e.target.closest("[data-f]");
   if (el) showSkillFile(skv.draft.files.find(f => f.key === el.dataset.f));
 });
-// ---- web search: Open WebUI searches (its engine, e.g. you.com), the results go to whichever model answers ----
+// ---- web search: a tool for whichever model answers; Open WebUI searches (its engine, e.g. you.com) ----
 const GLOBE = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/></svg>';
 let searchProviders = null;                 // [{provider, provider_name, notice}] (null: not asked yet)
-const searchCtx = new Map();                // answer id -> search results for the model; only while answering, not saved
 async function loadSearchProviders() {
   try { searchProviders = (await api("/app/websearch")).providers || []; } catch { if (searchProviders === null) searchProviders = []; }
 }
@@ -2792,7 +2792,7 @@ function webRowHtml() {
     + `<span class="switch${on && state === "ready" ? " on" : ""}" role="switch" aria-checked="${on && state === "ready"}"></span></div>`;
   if (searchProviders === null) return row("loading", "Lädt…");
   if (!sp) return row("none", "Braucht einen Open-WebUI-Anbieter mit Websuche (z. B. EDU-KI)");
-  return row("ready", `Über ${esc(sp.provider_name || sp.provider)}, für diesen Chat`);
+  return row("ready", `Das Modell sucht bei Bedarf, über ${esc(sp.provider_name || sp.provider)}`);
 }
 function refreshWebRow() {                  // same state: only flip the switch, so it slides instead of jumping
   const r = $("plusMenu").querySelector("[data-webrow]"); if (!r) return;
@@ -2813,25 +2813,44 @@ async function toggleWebSearch(on) {
   chat.webSearch = on; renderSkillChips(); refreshWebRow();
   if (chat.id) save().catch(() => {});
 }
-async function runWebSearch(a) {
-  if (searchProviders === null) await loadSearchProviders();
-  const sp = searchProvider();
-  if (!sp) { a.searchNote = "Websuche nicht verfügbar: kein Open-WebUI-Anbieter mit Websuche angemeldet."; return; }
-  a.searching = true; render();
-  const mine = MODEL_META[chat.model] && MODEL_META[chat.model].provider === sp.provider;   // a model there writes the queries
-  const qmodel = mine ? modelName(chat.model) : (Object.values(MODEL_META).find(m => m.provider === sp.provider) || {}).model;
-  const msgs = branch().filter(m => m.id !== a.id && m.content).map(m => ({role: m.role, content: m.content}));
-  try {
-    const r = await api("/app/websearch", json("POST", {provider: sp.provider, messages: msgs, model: qmodel || null}));
-    a.sources = (r.results || []).map(x => ({title: x.title, url: x.url}));
-    if (a.sources.length) searchCtx.set(a.id, searchPrompt(r)); else a.searchNote = "Die Websuche hat nichts gefunden.";
-  } catch (e) { const m = errMsg(e); a.searchNote = /websuche/i.test(m) ? m : "Websuche fehlgeschlagen: " + m; }
-  a.searching = false;
+// The model searches itself, with the web_search tool, when an answer needs it: with its own query (not the user's
+// words, so "What about now?" is not sent to a search engine), as often as it needs to, and never for questions about
+// the chat. The pages become the answer's sources: numbered across all its searches, shown under it as "Quellen".
+const webOn = () => !!(chat && chat.webSearch && searchProvider());
+const WEB_TOOL = {type: "function", function: {name: "web_search", description: "Search the web. Returns the most "
+  + "relevant pages for the query with their text, each numbered as a source. Write a precise query (names, terms, "
+  + "versions, the year where it matters) rather than the user's words; search again with another query if the "
+  + "results do not answer the question.", parameters: {type: "object", properties: {query: {type: "string"}}, required: ["query"]}}};
+function webPrompt() {                      // what the model knows about web search in this chat
+  if (webOn()) return "Web search is on for this chat: the web_search tool searches the web for you. Use it when an "
+    + "answer depends on current, external or uncertain information, not for questions about this chat, yourself or "
+    + "the user's files. Cite what you use as [n], with the numbers the results carry.";
+  if (searchProvider()) return "Web search is off for this chat, so you cannot search the web. If an answer needs it, "
+    + "tell the user they can switch it on in the + menu under \"Websuche\".";
+  return "";
 }
-const searchPrompt = r => "Web search results for the user's latest message"
-  + (r.queries && r.queries.length ? ` (searched for: ${r.queries.map(q => `"${q}"`).join(", ")})` : "")
-  + ". Use them where they help, and cite them as [1], [2], … by the numbers below. If they do not answer the question, say so.\n\n"
-  + r.results.map((x, i) => `[${i + 1}] ${x.title}\nURL: ${x.url}\n${x.content}`).join("\n\n");
+async function webSearchCall(c, args, ctrl, a) {
+  const sp = searchProvider();
+  if (!sp) { c.status = "error"; c.result = "Error: web search is not available any more (no logged-in provider with web search)."; return; }
+  c.status = "running"; render();
+  try {
+    const r = await api("/app/websearch", {...json("POST", {provider: sp.provider, query: String(args.query || "")}), signal: ctrl.signal});
+    const src = a.sources || (a.sources = []), hits = [];
+    for (const x of r.results || []) {                   // a page found again keeps its number
+      let i = src.findIndex(y => y.url === x.url);
+      if (i < 0) { src.push({title: x.title, url: x.url}); i = src.length - 1; }
+      hits.push({n: i + 1, title: x.title, url: x.url, content: x.content});
+    }
+    c.meta = {hits: hits.map(({content, ...h}) => h)};
+    c.result = hits.length ? hits.map(h => `[${h.n}] ${h.title}\nURL: ${h.url}\n${h.content}`).join("\n\n")
+      : "No results. Try another query.";
+    c.status = "done";
+  } catch (e) {
+    if (e.name === "AbortError") throw e;
+    const m = errMsg(e);
+    c.status = "error"; c.result = "Error: " + (/nichts gefunden/i.test(m) ? "no results. Try another query." : m);
+  }
+}
 const hostOf = u => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; } };
 function sourcesHtml(m) {
   return (m.searchNote ? `<div class="snote">${esc(m.searchNote)}</div>` : "")
@@ -2967,12 +2986,14 @@ Use the tools to explore the project, read and edit files, and run commands. Pat
 Shell commands run in a sandbox. Only this folder is shared with the user (except .git/hooks and .git/config, which you cannot change). \
 Your home directory belongs to the sandbox and this folder: none of the user's files are there, only some read-only tool folders. \
 /tmp is new for every command, the system is read-only, and ${chat.net && SANDBOX.net
-  ? "network access is on" : "there is no network access (the user can switch it on for this chat)"}. If a task needs more, say so instead of working around it.` : ""}
+  ? "commands have network access" : "commands have no network access (the user can switch it on for this chat; this is not web search)"}. If a task needs more, say so instead of working around it.` : ""}
 Read a file before editing it; prefer edit_file for small changes. Verify your work (run tests or the program) when possible.
 Be concise. When finished, summarize what you changed. Answer in the user's language.`;
 
 function payload(upto) {
-  const sys = [chat.workdir ? sysPrompt() : "", chat.cards ? CARDS_PROMPT : "", skillsPrompt(), searchCtx.get(upto) || ""].filter(Boolean).join("\n\n");
+  const parts = [chat.workdir ? sysPrompt() : "", chat.cards ? CARDS_PROMPT : "", skillsPrompt()].filter(Boolean);
+  if (parts.length || webOn()) parts.push(webPrompt());   // plain chats get no system prompt just to say search is off
+  const sys = parts.filter(Boolean).join("\n\n");
   const out = sys ? [{role: "system", content: identity() + "\n" + sys}] : [];
   for (const m of branch()) {
     if (m.role === "user") out.push({role: "user", content: userContent(m)});
@@ -2990,7 +3011,8 @@ function payload(upto) {
 
 async function streamStep(msgs, step, ctrl) {
   const body = {model: chat.model, stream: true, messages: msgs};
-  if (chat.workdir) body.tools = TOOLS;
+  const tools = [...(chat.workdir ? TOOLS : []), ...(webOn() ? [WEB_TOOL] : [])];
+  if (tools.length) body.tools = tools;
   const r = await fetch("/v1/chat/completions", {...json("POST", body), signal: ctrl.signal});
   if (r.status === 401) { showLogin(); throw new Error("Nicht angemeldet"); }
   if (!r.ok) {
@@ -3027,10 +3049,11 @@ async function streamStep(msgs, step, ctrl) {
     calls: step.calls.map(c => ({name: c.name, args: c.args}))});
 }
 
-async function runCall(c, ctrl) {
+async function runCall(c, ctrl, a) {
   let args;
   try { args = JSON.parse(c.args || "{}"); }
   catch (e) { c.status = "error"; c.result = "Error: arguments are not valid JSON: " + e.message; return; }
+  if (c.name === "web_search") return webSearchCall(c, args, ctrl, a);
   if (!READONLY.has(c.name) && (chat.perm !== "auto" || (c.name === "bash" && !boxed()))) {   // no sandbox: always ask
     c.status = "approval"; render();
     const choice = await new Promise(res => { pending[c.id] = res; ctrl.signal.addEventListener("abort", () => res("deny"), {once: true}); });
@@ -3066,14 +3089,14 @@ async function reply(u) {          // a new answer to user message u (also: "reg
   render();
   const missing = [];                         // skills whose text cannot be fetched go without, and the answer says so
   await Promise.all((chat.skills || []).map(sk => skillContent(sk).catch(() => { missing.push(sk.name); })));
-  if (chat.webSearch && !ctrl.signal.aborted) await runWebSearch(a);
+  if (searchProviders === null) await loadSearchProviders();   // webOn() and webPrompt() need to know
   try {
     for (let turn = 0; turn < 40 && !ctrl.signal.aborted; turn++) {
       const step = {content: "", reasoning: "", calls: []};
       a.steps.push(step);
       await streamStep(payload(a.id), step, ctrl);
       if (!step.calls.length) break;
-      for (const c of step.calls) await runCall(c, ctrl);
+      for (const c of step.calls) await runCall(c, ctrl, a);
       render();
       if (turn === 39) a.error = "Abbruch: Limit von 40 Schritten erreicht.";
     }
@@ -3137,6 +3160,7 @@ async function boot() {
   $("uemail").textContent = st.user?.email || logged.map(p => p.name).join(", ");
   await conns;
   await models;
+  loadSearchProviders();                               // the prompt says whether web search can be switched on
   if (!Object.keys(MODEL_META).length) return showLogin("Kein Modell verfügbar. Bitte einen Anbieter anmelden.");
   newChat(false);                                      // the chat list is on its way already
   setTimeout(checkUpdate, 4000);                       // not while the start itself is still busy

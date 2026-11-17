@@ -128,10 +128,13 @@ Anmeldebildschirm; Hochschule und Benutzername sind dann schon eingetragen. Abme
   PowerPoint (`.pptx`) und OpenDocument (`.odt`, `.odp`) gehen als Text in die Nachricht. Gescannte PDFs ohne
   Textebene, Excel und alte `.doc`/`.ppt` gehen nicht; die App sagt dann, was stattdessen geht. Ein Klick auf
   einen Anhang zeigt, was das Modell davon bekommt.
-- **Websuche**: Unter **+** für den Chat einschalten (Chip über dem Eingabefeld). Vor jeder Antwort sucht Open WebUI
-  (z. B. EDU-KI, dort mit you.com) zur letzten Frage, das Modell bekommt die Treffer und zitiert sie mit [1], [2];
-  die Quellen stehen unter der Antwort. Geht mit jedem Modell, braucht aber einen angemeldeten Open-WebUI-Anbieter
-  mit Websuche. Beim ersten Einschalten zeigt die App den Datenschutzhinweis des Anbieters.
+- **Websuche**: Unter **+** für den Chat einschalten (Chip über dem Eingabefeld). Das Modell bekommt dann ein
+  Werkzeug `web_search` und sucht selbst, wenn eine Antwort es braucht: mit eigener Suchanfrage, bei Bedarf mehrmals,
+  nicht bei Fragen zum Chat selbst. Gesucht wird über Open WebUI (z. B. EDU-KI, dort mit you.com); an den Anbieter
+  geht nur die Suchanfrage, nicht der Chat. Das Modell zitiert die Treffer mit [1], [2]; die Quellen stehen unter der
+  Antwort, die Suchen als Karte darüber. Geht mit jedem Modell, das Werkzeuge nutzt (auch über den Prompt),
+  braucht aber einen angemeldeten Open-WebUI-Anbieter mit Websuche. Beim ersten Einschalten zeigt die App den
+  Datenschutzhinweis des Anbieters. Ist sie aus, weiß das Modell das und verweist auf den Schalter.
 - **Infokarten**: Unter **+** (standardmäßig an, die Wahl gilt pro Chat und als Vorgabe für neue). Das Modell kann
   dann Übersichten, Vergleiche, Zeitleisten oder einfache Diagramme als Karte aus HTML und CSS zeigen; im Text ist
   das ein Codeblock mit der Sprache `card`. Die Karte läuft abgeschottet: ohne JavaScript, ohne Formulare und ohne

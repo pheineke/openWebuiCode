@@ -126,8 +126,8 @@ class Backend:
         """{"notice": text the user should confirm, or ""} if the service can search the web, else None."""
         return None
 
-    async def web_search(self, p: dict, messages: list[dict], model: str | None) -> dict:
-        """{"queries": [...], "results": [{"title", "url", "content"}]} for the conversation's last question."""
+    async def web_search(self, p: dict, query: str) -> dict:
+        """{"queries": [query], "results": [{"title", "url", "content"}]}: the pages found for a query."""
         raise ProxyError("Dieser Anbieter kann nicht im Web suchen.", 400)
 
     async def model_icon(self, p: dict, model: str) -> tuple[bytes, str] | None:

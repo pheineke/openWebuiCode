@@ -254,11 +254,9 @@ async def web_search_providers():
 
 @app.post("/app/websearch")
 async def web_search(req: dict):
-    """Search for the conversation's last question; the app hands the results to whichever model answers."""
+    """The app's web_search tool: the pages for the query the answering model wrote, whichever model that is."""
     p = _logged_in(_provider(str(req.get("provider") or "")))
-    msgs = [{"role": m.get("role"), "content": str(m.get("content") or "")[:6000]}
-            for m in (req.get("messages") or [])[-8:] if isinstance(m, dict) and m.get("role") in ("user", "assistant")]
-    return await backends.of(p).web_search(p, msgs, req.get("model") or None)
+    return await backends.of(p).web_search(p, str(req.get("query") or ""))
 
 
 @app.get("/app/skills")
