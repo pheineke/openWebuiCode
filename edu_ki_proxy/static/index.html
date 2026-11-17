@@ -1245,15 +1245,15 @@ async function renderProviders() {
   try { list = loginProviders = await fetchProviders(); } catch (e) { box.innerHTML += `<div class="pmsg err">${esc(String(e.message))}</div>`; return; }
   const rows = list.map(p => `<div class="ucard">
     <div class="uhead"><b>${esc(p.name)}</b><span class="umuted">${esc(providerTypeLabel(p.type))}${providerState(p)}</span></div>
-    <p class="umuted" style="margin:6px 0;word-break:break-all">${esc(p.base_url || "")}${p.user && (p.user.email || p.user.name) ? " · " + esc(p.user.email || p.user.name) : ""}</p>
-    ${Array.isArray(p.emulate_tools) ? `<div class="pform"><label class="wide">Tools über den Prompt (Modell-IDs, Komma-getrennt)
+    <p class="umuted" style="margin:6px 0;word-break:break-all">${esc(p.base_url || "")}${p.logged_in && p.user && (p.user.email || p.user.name) ? " · " + esc(p.user.email || p.user.name) : ""}</p>
+    ${p.logged_in && Array.isArray(p.emulate_tools) ? `<div class="pform"><label class="wide">Tools über den Prompt (Modell-IDs, Komma-getrennt)
       <input data-emu="${esc(p.id)}" value="${esc(p.emulate_tools.join(", "))}" placeholder="z. B. claude-sonnet-5-rptu" spellcheck="false">
       <small class="umuted" style="font-weight:400">Für Modelle, die keine Tool-Aufrufe bekommen: Die Tools werden im Prompt beschrieben und die Antwort ausgewertet.</small></label></div>` : ""}
     <div class="prow">
       ${p.login ? `<button data-act="login" data-pid="${esc(p.id)}">${p.logged_in ? "Erneut anmelden" : "Anmelden"}</button>` : ""}
-      <button data-act="test" data-pid="${esc(p.id)}">Testen</button>
+      ${p.logged_in ? `<button data-act="test" data-pid="${esc(p.id)}">Testen</button>` : ""}
       <span style="flex:1"></span>
-      ${p.logged_in || p.expired ? `<button data-act="logout" data-pid="${esc(p.id)}">Abmelden</button>` : ""}
+      ${p.logged_in ? `<button data-act="logout" data-pid="${esc(p.id)}">Abmelden</button>` : ""}
       <button data-act="remove" data-pid="${esc(p.id)}" data-name="${esc(p.name || p.id)}" style="color:var(--danger)">Entfernen</button>
     </div></div>`).join("");
   const types = Object.entries(providerTypes);
@@ -2711,8 +2711,15 @@ const TOOLS = [
 ].map(([name, description, props, required]) => ({type: "function", function: {name, description, parameters: {type: "object",
   properties: Object.fromEntries(Object.entries(props).map(([k, t]) => [k, {type: t}])), required}}}));
 
-// The situation and the rules, but no role ("You are a coding agent"): given one, models fill in who they are,
-// and DeepSeek called itself Claude.
+// Which model answers. In a setting with tools and a project folder DeepSeek often says it is Claude, whether or
+// not the prompt gives it a role; told its name, it gives that.
+function identity() {
+  const m = MODEL_META[chat.model] || {}, id = modelName(chat.model), name = m.name || id;
+  return `You are the model "${name}"${name !== id ? ` (${id})` : ""}${m.providerName ? `, served through ${m.providerName}` : ""}. `
+    + "When asked which model you are, say that.";
+}
+
+// The situation and the rules (who answers: identity()).
 const sysPrompt = () => `The user's project folder: ${chat.workdir}${connOf(chat.conn) ? `
 This folder is on the remote host "${connOf(chat.conn).name}" (${connOf(chat.conn).host}), reached over SSH. All tools run on that host, not on the user's own computer.` : ""}
 Use the tools to explore the project, read and edit files, and run commands. Paths are relative to that folder.${boxed() ? `
@@ -2725,7 +2732,7 @@ Be concise. When finished, summarize what you changed. Answer in the user's lang
 
 function payload(upto) {
   const sys = [chat.workdir ? sysPrompt() : "", chat.cards ? CARDS_PROMPT : "", skillsPrompt(), searchCtx.get(upto) || ""].filter(Boolean).join("\n\n");
-  const out = sys ? [{role: "system", content: sys}] : [];
+  const out = sys ? [{role: "system", content: identity() + "\n" + sys}] : [];
   for (const m of branch()) {
     if (m.role === "user") out.push({role: "user", content: userContent(m)});
     else if (m.steps) for (const s of m.id === upto ? m.steps.slice(0, -1) : m.steps) {  // current message: finished steps only
