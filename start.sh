@@ -2,9 +2,11 @@
 # Start EDU-KI Code. Sets up .venv on the first run (or repairs it) and reinstalls the requirements
 # whenever requirements.txt or the Python version changes.
 # Arguments are passed on to `python -m edu_ki_proxy app`, e.g. ./start.sh --debug or --port 8788.
+# EDU_KI_SETUP_ONLY=1: set up, but don't start (install.sh).
 set -euo pipefail
 
 cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"   # works through a symlink, e.g. in ~/.local/bin
+export EDU_KI_CHECKOUT=$PWD     # where the app's updates come from (under Nix its code runs from the store)
 
 PYTHON=${PYTHON:-python3}
 VENV=.venv
@@ -22,6 +24,9 @@ use_nix() {
     [[ $(readlink -f "$py") == /nix/store/* ]]
 }
 if use_nix; then
+    if [[ -n ${EDU_KI_SETUP_ONLY:-} ]]; then
+        exec nix --extra-experimental-features 'nix-command flakes' build . --no-link
+    fi
     exec nix --extra-experimental-features 'nix-command flakes' run . -- "$@"
 fi
 
@@ -53,4 +58,5 @@ if [[ ! -f $STAMP || "$(<"$STAMP")" != "$want" ]]; then
     printf '%s\n' "$want" > "$STAMP"
 fi
 
+[[ -n ${EDU_KI_SETUP_ONLY:-} ]] && exit 0
 exec "$PY" -m edu_ki_proxy app "$@"

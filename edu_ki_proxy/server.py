@@ -27,7 +27,7 @@ from fastapi.staticfiles import StaticFiles
 
 from pydantic import BaseModel
 
-from . import auth, backends, chats, extract, providers, remote, sandbox, shibboleth, tools, trace, usage
+from . import auth, backends, chats, extract, providers, remote, sandbox, shibboleth, tools, trace, updater, usage
 from .backends import ProxyError, emulate, openwebui
 
 
@@ -712,6 +712,30 @@ async def chat_delete(cid: str, provider: str | None = None):
         except ProxyError:
             continue
     raise ProxyError("Chat nicht gefunden.", 404)
+
+
+# ---- app: updates (git checkout) --------------------------------------------------------------
+@app.get("/app/update")
+async def update_status(check: bool = False):
+    """Installed version and what is new upstream; check=true asks GitHub even if the last answer is recent."""
+    return await updater.status(check)
+
+
+@app.post("/app/update")
+async def update_apply():
+    try:
+        return await updater.update()
+    except updater.UpdateError as e:
+        raise ProxyError(str(e), 409) from e
+
+
+@app.post("/app/update/restart")
+async def update_restart():
+    """Close the window and start the new version; the answer reaches the page first."""
+    if not updater.can_restart():
+        raise ProxyError("Bitte die App neu starten.", 400)
+    asyncio.get_running_loop().call_later(0.3, updater.request_restart)
+    return {"ok": True}
 
 
 # ---- app: usage -------------------------------------------------------------------------------

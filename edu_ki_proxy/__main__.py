@@ -9,7 +9,7 @@ import time
 
 import httpx
 
-from . import auth, backends, providers, trace
+from . import auth, backends, providers, trace, updater
 
 
 def run_app(port: int = 8787) -> None:
@@ -32,6 +32,7 @@ def run_app(port: int = 8787) -> None:
               file=sys.stderr)
         window = None
     if window:
+        updater.on_restart(window.close)
         window.run(url)                      # native GTK/WebKit window; returns when it is closed
     else:
         browser = auth.system_browser()
@@ -41,9 +42,13 @@ def run_app(port: int = 8787) -> None:
                 browser = p.chromium.executable_path
         if not os.path.exists(browser):
             sys.exit("Kein Chromium gefunden: chromium installieren oder `.venv/bin/playwright install chromium`.")
-        subprocess.run([browser, f"--app={url}", f"--user-data-dir={auth.STATE_DIR / 'app-window'}",
-                        "--ozone-platform-hint=auto"], stderr=subprocess.DEVNULL)
+        proc = subprocess.Popen([browser, f"--app={url}", f"--user-data-dir={auth.STATE_DIR / 'app-window'}",
+                                 "--ozone-platform-hint=auto"], stderr=subprocess.DEVNULL)
+        updater.on_restart(proc.terminate)
+        proc.wait()
     srv.should_exit = True
+    if updater.restart_requested():          # after an update: the new version, started like this one
+        updater.restart()
 
 
 def _pick(pid: str | None) -> dict:
@@ -157,6 +162,7 @@ def main() -> None:
         server.PORT = a.port        # the Host/Origin guard must expect the port we really listen on
         uvicorn.run("edu_ki_proxy.server:app", host="127.0.0.1", port=a.port)
     elif a.cmd == "app":
+        updater.ARGS = sys.argv[2:]          # e.g. --debug, --port: kept for the restart after an update
         run_app(a.port)
     elif a.cmd == "providers":
         for p in providers.all_public():

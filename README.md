@@ -45,8 +45,13 @@ Nach der Freigabe steht die Änderung als Zeile im Chat (`+53 −0` = hinzugefü
 ```bash
 git clone git@github.com:pheineke/openWebuiCode.git
 cd openWebuiCode
-./start.sh
+./install.sh
 ```
+
+`install.sh` richtet alles ein (wie `start.sh`, siehe unten) und legt **EDU-KI Code** mit Symbol ins App-Menü;
+von dort startet die App wie jede andere. Die App läuft aus diesem Ordner, also den Ordner nicht löschen;
+nach dem Verschieben `./install.sh` noch einmal ausführen. `./install.sh --uninstall` nimmt den Eintrag wieder
+heraus (Ordner und Daten bleiben). Ohne Menü-Eintrag geht es auch nur mit `./start.sh`.
 
 `start.sh` legt beim ersten Start die `.venv` an (mit `--system-site-packages`, damit PyGObject sichtbar ist),
 installiert die Requirements und startet die App. Es repariert eine `.venv` ohne pip oder ohne
@@ -76,6 +81,8 @@ Sind Flakes nicht eingeschaltet, `--extra-experimental-features 'nix-command fla
 hinzufügen.
 
 ## Starten
+
+Aus dem App-Menü (nach `./install.sh`) oder im Terminal:
 
 ```bash
 ./start.sh                  # oder: .venv/bin/python -m edu_ki_proxy app
@@ -146,6 +153,19 @@ links → Abmelden (alle) oder **Strg+,** → **Anbieter** → Abmelden (einer).
   **Umbenennen** (auch per Doppelklick; Enter speichert, Esc bricht ab) und **Löschen**. Bei Open-WebUI-Chats gilt
   das auch in dessen Weboberfläche.
 - **Strg+K** durchsucht Chats, **Strg+,** öffnet die Einstellungen (Darstellung, Anbieter, Nutzung).
+
+## Aktualisieren
+
+Die App schaut kurz nach dem Start und danach alle paar Stunden auf GitHub nach neuen Commits (`git fetch` im
+Ordner der App). Gibt es welche, hat dein Profilbild unten links einen Punkt; im Profil-Menü steht dann
+**Update verfügbar** mit der Liste der Änderungen, und **Aktualisieren und neu starten** holt sie (`git pull`,
+nur vorwärts) und startet die App neu, mit neuen Requirements, falls nötig. Unten im Profil-Menü stehen die
+installierte Version und **Nach Updates suchen**.
+
+Hat der Ordner eigene Änderungen oder Commits, aktualisiert die App nicht, sondern sagt, was im Weg ist; dann
+selbst mit `git` zusammenführen. Für die Suche fragt die App nie nach einem Passwort oder einer Passphrase: Ist der
+SSH-Schlüssel gerade nicht verfügbar, versucht sie es bei GitHub über HTTPS (das geht bei öffentlichen
+Repositories).
 
 ## Anbieter
 
@@ -250,7 +270,8 @@ stille Neuanmeldung, nie das Passwort), lokale Chats (`chats/`), die Browserprof
 Chromium-Login (`browser-profile-<id>/`), die Fenster-Daten mit Einstellungen und das Nutzungsprotokoll.
 `state.json` stammt von älteren Versionen und wird nur beim ersten Start übernommen. `sandbox-home/` enthält je
 Arbeitsordner das Home-Verzeichnis, das Befehle des Modells in der Abschottung sehen (Caches von pip, npm usw.);
-löschen ist harmlos.
+löschen ist harmlos. Der Menü-Eintrag von `install.sh` liegt in
+`~/.local/share/applications/de.edu_ki_rlp.code.desktop`, sein Symbol unter `~/.local/share/icons/hicolor/`.
 Anmeldedaten löschen: in der App abmelden (entfernt auch die Cookies und gespeicherten Sitzungen der Anbieter
 im Fenster; nur Dateien zu löschen reicht nicht, die Hochschule könnte dich sonst ohne Passwort wieder anmelden).
 Andere Instanz: `EDU_KI_BASE=https://…`. Anderer Browser für den Chromium-Login: `EDU_KI_BROWSER=/pfad`.

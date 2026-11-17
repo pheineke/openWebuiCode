@@ -107,6 +107,20 @@ html.sb-collapsed #topbar{padding-left:10px}
 .umenu .ui:hover{background:var(--side)}
 .umenu kbd{font:11px system-ui;color:var(--muted)}
 .umenu hr{border:0;border-top:1px solid var(--line);margin:5px 4px}
+/* updates (updater.py): an entry in the profile card and a dot on the avatar when there is one; the settings page */
+.umenu .ui[hidden]{display:none}
+.umenu .ui.upd{color:var(--accent);font-weight:600}
+.umenu .ui.upd small{font-weight:400;font-size:12px;color:var(--muted)}
+.av.dot{position:relative}
+.av.dot::after{content:"";position:absolute;top:-2px;right:-2px;width:9px;height:9px;border-radius:50%;background:#e8890c;box-shadow:0 0 0 2px var(--side)}
+.srow .prow{display:flex;gap:8px;flex:none}
+.srow .prow button[disabled]{opacity:.6;cursor:default}
+.srow p.warn{color:var(--danger)}
+.updlist{list-style:none;margin:0;padding:0;font-size:13px}
+.updlist li{display:flex;gap:10px;align-items:baseline;padding:7px 0;border-bottom:1px solid var(--line)}
+.updlist code{font-size:12px;color:var(--muted)}
+.updlist span{flex:1;min-width:0;overflow-wrap:anywhere}
+.updlist small{color:var(--muted);white-space:nowrap}
 .sbig{width:min(980px,94vw);height:min(660px,88vh);background:var(--panel);border:1px solid var(--line);border-radius:16px;display:flex;overflow:hidden;position:relative;box-shadow:0 20px 60px #0007}
 .snav{width:230px;flex:none;border-right:1px solid var(--line);padding:18px 12px;background:var(--side)}
 .snav h4{margin:0 8px 10px;font-size:12px;font-weight:500;color:var(--muted)}
@@ -536,6 +550,7 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
   <div class="me">
     <div class="umenu" id="userMenu">
       <div class="ue" id="uemail"></div>
+      <div class="ui upd" id="mUpdate" hidden><span>Update verfügbar</span><small id="mUpdN"></small></div>
       <div class="ui" id="mSettings"><span>Einstellungen</span><kbd>Strg+,</kbd></div>
       <div class="ui" id="mUsage"><span>Nutzung</span></div>
       <hr>
@@ -598,7 +613,7 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
 </div>
 </div>
 <div class="overlay" id="settings"><div class="sbig">
-  <div class="snav"><h4>Einstellungen</h4><div class="act" data-page="appearance">Darstellung</div><div data-page="providers">Anbieter</div><div data-page="usage">Nutzung</div></div>
+  <div class="snav"><h4>Einstellungen</h4><div class="act" data-page="appearance">Darstellung</div><div data-page="providers">Anbieter</div><div data-page="usage">Nutzung</div><div data-page="updates">Updates</div></div>
   <div class="scont" id="scont"></div>
   <button class="sx" id="sclose" title="Schließen">✕</button>
 </div></div>
@@ -1133,6 +1148,67 @@ function renderList() {
 // ---- user menu + settings ------------------------------------------------
 $("meBtn").onclick = e => { e.stopPropagation(); $("userMenu").classList.toggle("on"); };
 document.addEventListener("click", () => $("userMenu").classList.remove("on"));
+
+// ---- updates from the app's git checkout (server: updater.py) -------------------------------------
+let update = null;                          // the last answer of /app/update
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+const when = ts => new Date(ts * 1000).toLocaleString("de-DE", {dateStyle: "medium", timeStyle: "short"});
+let updChecking = false;
+function renderUpdate() {                   // the dot on the avatar, the entry in the profile card, the settings page
+  const n = update && update.supported ? update.behind : 0;
+  $("mUpdate").hidden = !n;
+  $("mUpdN").textContent = n ? plural(n, "Änderung", "Änderungen") : "";
+  $("av").classList.toggle("dot", !!n);
+  if ($("settings").classList.contains("on") && settingsPage === "updates") renderUpdates();
+}
+async function checkUpdate(fresh = false) {
+  try { update = await api("/app/update" + (fresh ? "?check=true" : "")); } catch { return; }
+  renderUpdate();
+}
+setInterval(checkUpdate, 6 * 3600e3);       // the server asks GitHub at most once an hour
+$("mUpdate").onclick = () => openSettings("updates");
+// What stands in the way of an update ("" when nothing does).
+function updateBlocked(u) {
+  if (u.ahead) return `Dieser Ordner hat ${plural(u.ahead, "eigenen Commit", "eigene Commits")}, die nicht auf GitHub sind. Bitte selbst zusammenführen (git pull).`;
+  if (u.dirty.length) return `Geänderte Dateien im Ordner: ${u.dirty.slice(0, 4).join(", ")}${u.dirty.length > 4 ? " …" : ""}. Bitte erst committen oder verwerfen.`;
+  return "";
+}
+function renderUpdates() {
+  const u = update;
+  if (!u) { $("scont").innerHTML = `<h2>Updates</h2><p class="umuted">Wird geladen …</p>`; if (!updChecking) checkUpdate(); return; }
+  const v = u.version, blocked = u.behind ? updateBlocked(u) : "";
+  const state = !u.supported ? u.reason : u.error ? "Suche fehlgeschlagen: " + u.error
+    : !u.behind ? "Die App ist aktuell." : plural(u.behind, "Änderung", "Änderungen") + " verfügbar" + (blocked ? ". " + blocked : ".");
+  const list = u.commits.map(c => `<li><code>${esc(c.commit)}</code><span>${esc(c.subject)}</span><small>${when(c.date)}</small></li>`).join("")
+    + (u.more ? `<li><span>… und ${u.more} weitere</span></li>` : "");
+  $("scont").innerHTML = `<h2>Updates</h2>
+    <div class="srow"><div><b>Installierte Version</b><p>${v ? `${esc(v.commit)} vom ${when(v.date)}` : "unbekannt"}${u.branch ? ` · Zweig ${esc(u.branch)}` : ""}${u.upstream ? ` (folgt ${esc(u.upstream)})` : ""}</p></div>
+      <div class="prow"><button type="button" id="updCheck"${updChecking ? " disabled" : ""}>${updChecking ? "Suche …" : "Nach Updates suchen"}</button></div></div>
+    <div class="srow"><div><b>Status</b><p${(u.error || blocked || !u.supported) ? ' class="warn"' : ""}>${esc(state || "")}</p></div>
+      ${u.behind && !blocked && !u.error ? `<div class="prow"><button type="button" class="ok" id="updGo">${u.restart ? "Aktualisieren und neu starten" : "Aktualisieren"}</button></div>` : ""}</div>
+    ${list ? `<div class="utitle">Neu</div><ul class="updlist">${list}</ul>` : ""}
+    <p class="umuted">Die App sucht kurz nach dem Start und danach alle paar Stunden selbst (git fetch im Ordner ${esc(u.checkout || "")}).
+      Zuletzt gesucht: ${when(u.checked_at)}.</p>`;
+  $("updCheck").onclick = async () => {
+    updChecking = true; renderUpdates();
+    await checkUpdate(true);
+    updChecking = false; renderUpdates();
+  };
+  if ($("updGo")) $("updGo").onclick = applyUpdate;
+}
+async function applyUpdate() {
+  const u = update;
+  if (u.restart && streaming && !await dialog({title: "Jetzt aktualisieren?", text: "Die App startet danach neu; die laufende Antwort bricht ab.",
+    ok: "Aktualisieren und neu starten"})) return;
+  $("updGo").disabled = true; $("updGo").textContent = "Aktualisiere …";
+  try { await api("/app/update", {method: "POST"}); }
+  catch (e) { renderUpdates(); return notice("Update fehlgeschlagen", errMsg(e)); }
+  if (u.restart) {
+    try { await api("/app/update/restart", {method: "POST"}); return notice("Aktualisiert", "Die App startet neu …"); }
+    catch (e) { notice("Aktualisiert", "Bitte die App neu starten: " + errMsg(e)); }
+  } else notice("Aktualisiert", "Bitte die App neu starten, damit die neue Version läuft.");
+  await checkUpdate();
+}
 let settingsPage = "appearance";
 function openSettings(page) { settingsPage = typeof page === "string" ? page : "appearance"; $("userMenu").classList.remove("on"); renderSettings(); $("settings").classList.add("on"); }
 function closeSettings() { $("settings").classList.remove("on"); }
@@ -1151,6 +1227,7 @@ function renderSettings() {
   document.querySelectorAll(".snav [data-page]").forEach(d => d.classList.toggle("act", d.dataset.page === settingsPage));
   if (settingsPage === "usage") renderUsage();
   else if (settingsPage === "providers") renderProviders();
+  else if (settingsPage === "updates") renderUpdates();
   else renderAppearance();
 }
 const providerTypeLabel = t => (providerTypes[t] || {}).label || t;
@@ -2793,6 +2870,7 @@ async function boot() {
   await models;
   if (!Object.keys(MODEL_META).length) return showLogin("Kein Modell verfügbar. Bitte einen Anbieter anmelden.");
   newChat(false);                                      // the chat list is on its way already
+  setTimeout(checkUpdate, 4000);                       // not while the start itself is still busy
 }
 if (localStorage.workdir) { try { const k = "recentFolders"; const r = JSON.parse(localStorage[k] || "[]"); if (!r.includes(localStorage.workdir)) localStorage[k] = JSON.stringify([localStorage.workdir, ...r].slice(0, 8)); } catch {} }   // folders used before this feature existed
 applySidebar();

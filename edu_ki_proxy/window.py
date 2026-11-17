@@ -323,7 +323,24 @@ def build_window(app: Adw.Application, url: str):
     return win, view
 
 
+APP_ID = "de.edu_ki_rlp.code"      # also the name of install.sh's menu entry and icon: the desktop matches them
+_app: Adw.Application | None = None
+
+
 def run(url: str) -> None:
-    app = Adw.Application(application_id="de.edu_ki_rlp.code")
-    app.connect("activate", lambda a: build_window(a, url)[0].present())
-    app.run(None)
+    global _app
+    GLib.set_prgname(APP_ID)           # X11 window class, so the dock matches it with the menu entry (Wayland: the id)
+    _app = Adw.Application(application_id=APP_ID)
+
+    def activate(a):
+        Gtk.Window.set_default_icon_name(APP_ID)     # the icon install.sh puts into the icon theme
+        build_window(a, url)[0].present()
+
+    _app.connect("activate", activate)
+    _app.run(None)
+
+
+def close() -> None:
+    """Close the window from another thread (the server's, for a restart after an update)."""
+    if _app:
+        GLib.idle_add(_app.quit)
