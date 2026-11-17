@@ -521,7 +521,7 @@ main{position:relative}
 .spin i:nth-child(2){--d:-160ms}.spin i:nth-child(3){--d:-320ms}
 @keyframes bl{0%,100%{opacity:.25;transform:scale(.8)}50%{opacity:1;transform:scale(1.15)}}
 .flink{color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent)}
-#topbar{height:40px;flex:none;display:flex;align-items:center;gap:12px;padding:0 10px 0 22px}
+#topbar{height:40px;flex:none;display:flex;align-items:center;gap:12px;padding:0 10px 0 22px;border-bottom:1px solid var(--line)}   /* like the sidebar's edge */
 /* The native window's buttons overlay the corners. The window reports their real widths (--wc-start,
    --wc-end), which depend on the desktop: GNOME shows only "close", KDE also minimize and maximize. */
 .shell #topbar{padding-right:calc(var(--wc-end, 46px) + 10px)}
