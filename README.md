@@ -160,8 +160,8 @@ Anmeldebildschirm; Hochschule und Benutzername sind dann schon eingetragen. Abme
   **Umbenennen** (auch per Doppelklick; Enter speichert, Esc bricht ab) und **Löschen**. Bei Open-WebUI-Chats gilt
   das auch in dessen Weboberfläche.
 - **Strg+K** durchsucht Chats, **Strg+,** öffnet die Einstellungen (Darstellung, Anbieter, Nutzung). Unter
-  **Darstellung**: Farbschema, Akzentfarbe und der **Chat-Hintergrund** (schlicht oder ein dezentes Blasenmuster in
-  der Akzentfarbe).
+  **Darstellung**: Farbschema, Akzentfarbe und der **Chat-Hintergrund** (schlicht oder ein dezentes Muster in der
+  Akzentfarbe: Blasen oder Doodles mit Entwickler-Symbolen).
 
 ## Aktualisieren
 
