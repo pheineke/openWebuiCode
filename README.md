@@ -36,6 +36,9 @@ Nach der Freigabe steht die Änderung als Zeile im Chat (`+53 −0` = hinzugefü
   o. ä.), sonst sieht die `.venv` es nicht. Fehlt etwas davon, öffnet die App stattdessen ein Chromium-Fenster
   (dafür `chromium`/`google-chrome` oder `.venv/bin/playwright install chromium`) und schreibt in die Konsole,
   was fehlt.
+- Für die [Abschottung](#abschottung) der Befehle des Modells: `bubblewrap`, für Internet darin `passt`.
+  Fedora: beide installiert; Debian/Ubuntu: `sudo apt install bubblewrap passt`; Arch: `sudo pacman -S bubblewrap passt`.
+  Ohne bubblewrap laufen Befehle nicht abgeschottet, und die App fragt vor jedem einzelnen.
 
 ## Einrichten
 
@@ -105,8 +108,9 @@ links → Abmelden (alle) oder **Strg+,** → **Anbieter** → Abmelden (einer).
 ## Benutzen
 
 - **Ordner** (unter dem Eingabefeld, links): Arbeitsordner wählen; im Auswahlfenster legt **Neuer Ordner**
-  einen an. Dann darf das Modell dort lesen, ändern und Befehle ausführen. Schreiben und Befehle fragen nach,
-  außer du stellst rechts neben dem Modell „Auto“ ein.
+  einen an. Dann darf das Modell dort lesen, ändern und Befehle ausführen, [abgeschottet](#abschottung) im Ordner
+  (Schild im Ordner-Chip; rot: nicht abgeschottet). Schreiben und Befehle fragen nach, außer du stellst rechts neben
+  dem Modell „Auto“ ein. Im selben Menü: **Internet für Befehle** (pro Chat, aus), z. B. für `pip install`.
 - **Unter jeder Nachricht** (beim Darüberfahren): Kopieren; bei deinen Nachrichten **Bearbeiten**, bei Antworten
   **Neu generieren** mit dem gerade gewählten Modell. Beides legt eine neue Version an, mit ‹ › wechselst du
   zwischen den Versionen. **Ab hier neuer Chat** setzt das Gespräch bis zu dieser Nachricht in einem neuen Chat
@@ -199,8 +203,9 @@ wählen. Agent-Werkzeuge, Datei-Bereich, HTML-Vorschau und Terminal laufen dann 
 - Neue Chats starten immer **lokal**. Die Verbindung gehört zum Chat und wird mit ihm gespeichert.
 - Gespeichert werden nur Name, Host, Port und Schlüsselpfad (`~/.config/edu-ki-proxy/ssh.json`), keine Passwörter.
   Eine eigene ssh-Konfiguration statt `~/.ssh/config`: `EDU_KI_SSH_CONFIG=/pfad`.
-- Wie lokal gilt: Dateiwerkzeuge bleiben im gewählten Ordner (auch über Symlinks, auf dem Server geprüft),
-  `bash` ist nicht abgeschottet, die Rückfrage ist der Schutz.
+- Dateiwerkzeuge bleiben im gewählten Ordner (auch über Symlinks, auf dem Server geprüft), `~/.ssh`, `~/.gnupg`
+  und Dateien in `.git` schreibt das Modell nicht. Befehle sind auf dem Server **nicht** abgeschottet: Die App fragt
+  vor jedem einzelnen, auch bei „Auto“.
 
 ## Mit opencode
 
@@ -243,7 +248,9 @@ Chromium-Fenster), `providers` (konfigurierte Anbieter),
 Sitzungen (`providers.json`, nur für dich lesbar; bei Hochschul-Anmeldung auch die Cookies der Hochschule für die
 stille Neuanmeldung, nie das Passwort), lokale Chats (`chats/`), die Browserprofile für den
 Chromium-Login (`browser-profile-<id>/`), die Fenster-Daten mit Einstellungen und das Nutzungsprotokoll.
-`state.json` stammt von älteren Versionen und wird nur beim ersten Start übernommen.
+`state.json` stammt von älteren Versionen und wird nur beim ersten Start übernommen. `sandbox-home/` enthält je
+Arbeitsordner das Home-Verzeichnis, das Befehle des Modells in der Abschottung sehen (Caches von pip, npm usw.);
+löschen ist harmlos.
 Anmeldedaten löschen: in der App abmelden (entfernt auch die Cookies und gespeicherten Sitzungen der Anbieter
 im Fenster; nur Dateien zu löschen reicht nicht, die Hochschule könnte dich sonst ohne Passwort wieder anmelden).
 Andere Instanz: `EDU_KI_BASE=https://…`. Anderer Browser für den Chromium-Login: `EDU_KI_BROWSER=/pfad`.
@@ -277,9 +284,30 @@ Andere Instanz: `EDU_KI_BASE=https://…`. Anderer Browser für den Chromium-Log
 ## Sicherheit in Kürze
 
 Der Server hört nur auf `127.0.0.1` und prüft Host und Origin, damit andere Webseiten ihn nicht nutzen können
-(auch für das Terminal). Die Dateiwerkzeuge bleiben im gewählten Ordner, `bash` ist **nicht** abgeschottet:
-Die Rückfrage ist der Schutz, also nur freigeben, was du verstehst. Die HTML-Vorschau läuft in einer Sandbox
-ohne Zugriff auf die App.
+(auch für das Terminal). Die Dateiwerkzeuge bleiben im gewählten Ordner, Befehle laufen abgeschottet (siehe unten).
+Die HTML-Vorschau läuft in einer Sandbox ohne Zugriff auf die App.
+
+### Abschottung
+
+Ein Modell kann sich verleiten lassen, etwa von Anweisungen in einer README oder einem Suchergebnis. Darum
+läuft jeder Befehl des Modells (`bash`) lokal in [bubblewrap](https://github.com/containers/bubblewrap):
+
+- **Dateien:** Mit dir geteilt ist nur der Arbeitsordner; das System ist schreibgeschützt, `/tmp` für jeden Befehl neu.
+  Statt deines Home-Verzeichnisses gibt es je Arbeitsordner ein eigenes (`sandbox-home/`, so erreicht nichts von einem
+  Projekt ein anderes), darin schreibgeschützt Werkzeuge wie `~/.local/bin` oder `~/.cargo/bin`.
+  Die Sitzungen der App, `~/.ssh` und `~/.gnupg` bleiben verborgen, auch wenn der Arbeitsordner sie enthält.
+- **Git:** Das Modell darf committen, aber `.git/hooks` und `.git/config` nicht ändern: Die führt dein eigenes git
+  später ohne Abschottung aus. Legt ein Befehl ein neues Repository an, entfernt die App danach Hooks und alle
+  Einstellungen außer Name, E-Mail, Remotes und Branches.
+- **Umgebung und Prozesse:** keine Umgebungsvariablen der App (kein ssh-agent, D-Bus, Schlüsselbund oder Bildschirm),
+  nicht der Name und die Machine-ID deines Rechners; alles, was ein Befehl startet, endet mit ihm.
+- **Netz:** aus. Mit **Internet für Befehle** (pro Chat) geht es über `pasta` ins Internet, aber nicht zu deinem
+  Rechner selbst, also auch nicht zu dieser App. Dein Heimnetz und VPNs (z. B. Tailscale) sind dann erreichbar.
+
+Nicht abgeschottet sind Befehle auf SSH-Servern und auf Rechnern ohne bubblewrap: Dort fragt die App vor
+jedem einzelnen, auch bei „Auto“. Was die Abschottung nicht abdeckt: Dateien im Ordner sieht der Anbieter des
+Modells; Code, den das Modell schreibt und den du später selbst startest (`npm run …`, ein Makefile), läuft mit
+deinen Rechten. Wählst du dein ganzes Home-Verzeichnis als Arbeitsordner, ist auch alles darin freigegeben.
 
 Gebündelte Bibliotheken (`edu_ki_proxy/static/vendor/`): highlight.js (BSD-3-Clause), xterm.js (MIT), marked (MIT),
 DOMPurify (Apache-2.0 oder MPL-2.0).

@@ -169,10 +169,16 @@ async def run(conn: dict, script: str, args=(), stdin: bytes | None = None, time
 _ROOT = r'''d=$1; case "$d" in "~") d=$HOME;; "~/"*) d=$HOME/${d#"~/"};; esac; [ -n "$d" ] || d=$HOME
 root=$(cd "$d" 2>/dev/null && pwd -P) || { echo "no such folder: $1" >&2; exit 90; }
 '''
-# Resolve $2 on the host (following symlinks) and refuse anything outside the working folder.
+# Resolve $2 on the host (following symlinks) and refuse anything outside the working folder, and the
+# host's keys even when the working folder contains them.
 _PATH = _ROOT + r'''case "$2" in /*) p=$2;; *) p=$root/$2;; esac
 t=$(realpath -m -- "$p") || { echo "cannot resolve path: $2" >&2; exit 92; }
 case "$t" in "$root"|"$root"/*) ;; *) echo "path is outside the working folder: $2" >&2; exit 91;; esac
+h=$(cd "$HOME" 2>/dev/null && pwd -P) || h=/nonexistent
+case "$t" in "$h/.ssh"|"$h/.ssh/"*|"$h/.gnupg"|"$h/.gnupg/"*) echo "path is protected (keys): $2" >&2; exit 91;; esac
+'''
+# Files inside a .git folder are not written by the model: git runs hooks and config later, unasked.
+_WRITABLE = r'''case "${t#"$root"}/" in */.git/*) echo "files inside .git are not writable for the model: $2" >&2; exit 91;; esac
 '''
 _FILE = r'''[ -f "$t" ] || { echo "not a file: $2" >&2; exit 93; }
 sz=$(wc -c <"$t")
@@ -194,7 +200,7 @@ async def _read_text(conn, workdir, path) -> str:
 
 async def _write_text(conn, workdir, path, content: str) -> int | None:
     """Write the file; returns its previous line count, or None when it is new."""
-    script = _PATH + r'''if [ -e "$t" ]; then [ -f "$t" ] || { echo "not a file: $2" >&2; exit 93; }; grep -c '' -- "$t"; else echo NEW; fi
+    script = _PATH + _WRITABLE + r'''if [ -e "$t" ]; then [ -f "$t" ] || { echo "not a file: $2" >&2; exit 93; }; grep -c '' -- "$t"; else echo NEW; fi
 mkdir -p -- "$(dirname -- "$t")" && cat > "$t"'''
     rc, out, err = await run(conn, script, [workdir, path], stdin=content.encode("utf-8"))
     _check(rc, err)

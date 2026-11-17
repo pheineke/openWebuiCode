@@ -27,13 +27,19 @@ from fastapi.staticfiles import StaticFiles
 
 from pydantic import BaseModel
 
-from . import auth, backends, chats, extract, providers, remote, shibboleth, tools, trace, usage
+from . import auth, backends, chats, extract, providers, remote, sandbox, shibboleth, tools, trace, usage
 from .backends import ProxyError, emulate, openwebui
+
+
+def _sandbox_info() -> dict:
+    """What this computer can do for the model's shell commands (the checks run once)."""
+    return {"local": sandbox.available(), "net": sandbox.network_available()}
 
 
 @asynccontextmanager
 async def lifespan(_app):
     usage.meta()   # live usage capture starts the first time the server runs, not the first time the page is opened
+    asyncio.get_running_loop().run_in_executor(None, _sandbox_info)   # checked before the first command needs it
     yield
     await openwebui.close_clients()
 
@@ -304,7 +310,8 @@ async def status():
             break
     default = providers.default()
     return {"logged_in": bool(logged), "providers": providers.all_public(), "user": user,
-            "default": default["id"] if default else None, "debug": trace.on(), "home": str(Path.home())}
+            "default": default["id"] if default else None, "debug": trace.on(), "home": str(Path.home()),
+            "sandbox": await asyncio.to_thread(_sandbox_info)}
 
 
 @app.get("/app/providers")
@@ -751,13 +758,14 @@ class ToolReq(BaseModel):
     name: str
     args: dict = {}
     conn: str | None = None
+    net: bool = False             # the chat allows network access for sandboxed commands
 
 
 @app.post("/app/tool")
 async def run_tool(req: ToolReq):
     t0 = time.monotonic()
     try:
-        output, meta = await tools.run(req.workdir, req.name, req.args, _conn(req.conn))
+        output, meta = await tools.run(req.workdir, req.name, req.args, _conn(req.conn), network=req.net)
         trace.log("tool", name=req.name, args=req.args, output=output, t=round(time.monotonic() - t0, 1), cap=600)
         return {"output": output, "is_error": False, "meta": meta}
     except tools.ToolError as e:

@@ -1,9 +1,12 @@
-"""Local tools the model can call. File tools are confined to the chat's working folder."""
+"""Local tools the model can call. File tools are confined to the chat's working folder, bash runs in a
+sandbox around it (sandbox.py) where bubblewrap is available."""
 import asyncio
 import os
 import re
 import signal
 from pathlib import Path
+
+from . import sandbox
 
 MAX_OUT = 30_000
 SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", ".mypy_cache", ".pytest_cache"}
@@ -24,6 +27,16 @@ def _path(root: Path, p: str) -> Path:
     full = (root / p).resolve()  # absolute p replaces root; .resolve() follows symlinks
     if full != root and not full.is_relative_to(root):
         raise ToolError(f"path is outside the working folder: {p}")
+    if _protected(full):
+        raise ToolError(f"path is protected (keys and sessions): {p}")
+    return full
+
+
+def _writable(root: Path, p: str) -> Path:
+    """A path the model may write: not inside a .git folder, whose hooks and config git would run later."""
+    full = _path(root, p)
+    if ".git" in full.relative_to(root).parts:
+        raise ToolError(f"files inside .git are not writable for the model: {p}")
     return full
 
 
@@ -70,7 +83,7 @@ def read_file(root, path, offset=1, limit=2000):
 
 
 def write_file(root, path, content):
-    f = _path(root, path)
+    f = _writable(root, path)
     old_lines = len(_read_text(f).splitlines()) if f.exists() else None
     f.parent.mkdir(parents=True, exist_ok=True)
     f.write_text(content, encoding="utf-8")
@@ -79,7 +92,7 @@ def write_file(root, path, content):
 
 
 def edit_file(root, path, old_string, new_string, replace_all=False):
-    f = _path(root, path)
+    f = _writable(root, path)
     new_text, n = apply_edit(_read_text(f), old_string, new_string, replace_all)
     f.write_text(new_text, encoding="utf-8")
     meta = {"created": False, "added": len(new_string.splitlines()) * n, "removed": len(old_string.splitlines()) * n}
@@ -95,15 +108,20 @@ def list_dir(root, path="."):
 
 
 def _walk(base: Path):
+    hidden = set(sandbox.protected())
     for dp, dns, fns in os.walk(base):
-        dns[:] = [d for d in dns if d not in SKIP_DIRS]
+        dns[:] = [d for d in dns if d not in SKIP_DIRS and Path(dp, d) not in hidden]
         for fn in fns:
             yield Path(dp) / fn
 
 
+def _protected(p: Path) -> bool:
+    return any(p == x or p.is_relative_to(x) for x in sandbox.protected())
+
+
 def glob(root, pattern, path="."):
     base = _path(root, path)
-    hits = [p for p in base.glob(pattern) if not SKIP_DIRS.intersection(p.relative_to(root).parts)]
+    hits = [p for p in base.glob(pattern) if not SKIP_DIRS.intersection(p.relative_to(root).parts) and not _protected(p)]
     hits.sort()
     return "\n".join(str(p.relative_to(root)) for p in hits[:500]) or "no matches"
 
@@ -119,6 +137,9 @@ def grep(root, pattern, path=".", include=None):
     for f in files:
         if include and not f.match(include):
             continue
+        real = f.resolve()               # a link in the folder must not lead grep out of it
+        if not real.is_relative_to(root) or _protected(real):
+            continue
         try:
             if f.stat().st_size > 1_000_000:
                 continue
@@ -133,21 +154,56 @@ def grep(root, pattern, path=".", include=None):
     return "\n".join(out) or "no matches"
 
 
-async def bash(root, command, timeout=120):
+async def bash(root, command, timeout=120, network=False):
+    """``network`` comes from the chat's setting, never from the model's arguments (see run())."""
     timeout = min(max(int(timeout), 1), 600)
-    proc = await asyncio.create_subprocess_exec(
-        "bash", "-c", command, cwd=root, stdin=asyncio.subprocess.DEVNULL,
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, start_new_session=True)
+    boxed = sandbox.available()
+    if network and boxed and not sandbox.network_available():
+        raise ToolError("network access is switched on, but pasta (package passt) is not installed")
+    argv = sandbox.argv(root, ["bash", "-c", command], network) if boxed else ["bash", "-c", command]
+    git_before = sandbox.git_id(root)
     try:
-        out, _ = await asyncio.wait_for(proc.communicate(), timeout)
-    except asyncio.TimeoutError:
-        os.killpg(proc.pid, signal.SIGKILL)
-        await proc.wait()
-        raise ToolError(f"command timed out after {timeout}s")
+        code, out = await _run(argv, root, timeout)
+    finally:
+        removed = sandbox.clean_new_repo(root) if boxed and sandbox.git_id(root) != git_before else []
     text = out.decode("utf-8", errors="replace")
     if len(text) > MAX_OUT:  # keep the tail: errors are usually at the end
         text = f"[truncated {len(text) - MAX_OUT} chars]\n" + text[-MAX_OUT:]
-    return f"{text}\n[exit code {proc.returncode}]".strip()
+    if removed:
+        text += "\n[the sandbox removed git hooks and settings that would run outside it: " + ", ".join(removed) + "]"
+    return f"{text}\n[exit code {code}]".strip()
+
+
+async def _run(argv: list[str], cwd: Path, timeout: int) -> tuple[int, bytes]:
+    """(exit code, stdout and stderr) of a command.  Its output goes through a pipe, not the socket uvloop (under
+    uvicorn) hands to subprocesses: pasta drops a command's output when that is a socket."""
+    r, w = os.pipe()
+    try:
+        proc = await asyncio.create_subprocess_exec(*argv, cwd=cwd, stdin=asyncio.subprocess.DEVNULL, stdout=w, stderr=w,
+                                                    start_new_session=True)
+    except BaseException:
+        os.close(r)
+        raise
+    finally:
+        os.close(w)
+    reader = asyncio.StreamReader()
+    transport, _ = await asyncio.get_running_loop().connect_read_pipe(
+        lambda: asyncio.StreamReaderProtocol(reader), os.fdopen(r, "rb", 0))
+
+    async def finished() -> bytes:
+        out = await reader.read()          # until everything the command started has closed its output
+        await proc.wait()
+        return out
+
+    try:
+        out = await asyncio.wait_for(finished(), timeout)
+        return proc.returncode, out
+    except asyncio.TimeoutError:
+        os.killpg(proc.pid, signal.SIGKILL)       # the sandbox's processes end with it (--die-with-parent)
+        await proc.wait()
+        raise ToolError(f"command timed out after {timeout}s")
+    finally:
+        transport.close()
 
 
 SYNC = {"read_file": read_file, "write_file": write_file, "edit_file": edit_file,
@@ -174,15 +230,19 @@ def ls(workdir: str, path: str = ".") -> list[dict]:
     return [{"name": e.name, "dir": e.is_dir()} for e in entries[:1000]]
 
 
-async def run(workdir: str, name: str, args: dict, conn: dict | None = None) -> tuple[str, dict | None]:
-    """Returns (output text for the model, optional metadata for the UI). `conn` = SSH connection: run there."""
+async def run(workdir: str, name: str, args: dict, conn: dict | None = None,
+              network: bool = False) -> tuple[str, dict | None]:
+    """Returns (output text for the model, optional metadata for the UI). `conn` = SSH connection: run there.
+    `network`: the chat allows network access for sandboxed commands."""
     if conn:
         from . import remote
         return await remote.run_tool(conn, workdir, name, args)
     root = _root(workdir)
     try:
         if name == "bash":
-            return await bash(root, **args), None
+            if extra := set(args) - {"command", "timeout"}:     # e.g. "network": that is the person's choice
+                raise ToolError(f"bad arguments for bash: {', '.join(sorted(extra))}")
+            return await bash(root, **args, network=network), None
         if name in SYNC:
             res = await asyncio.to_thread(SYNC[name], root, **args)
             text, meta = res if isinstance(res, tuple) else (res, None)
