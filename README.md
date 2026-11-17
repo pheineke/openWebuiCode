@@ -161,7 +161,7 @@ Anmeldebildschirm; Hochschule und Benutzername sind dann schon eingetragen. Abme
   das auch in dessen Weboberfläche.
 - **Strg+K** durchsucht Chats, **Strg+,** öffnet die Einstellungen (Darstellung, Anbieter, Nutzung). Unter
   **Darstellung**: Farbschema, Akzentfarbe und der **Chat-Hintergrund** (schlicht oder ein dezentes Muster in der
-  Akzentfarbe: Blasen oder Doodles mit Entwickler-Symbolen).
+  Akzentfarbe: Blasen, Doodles mit Entwickler-Symbolen oder Kosmos mit Planeten und Sternen).
 
 ## Aktualisieren
 
