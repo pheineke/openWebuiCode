@@ -122,13 +122,17 @@ html.sb-collapsed #topbar{padding-left:10px}
 .updlist span{flex:1;min-width:0;overflow-wrap:anywhere}
 .updlist small{color:var(--muted);white-space:nowrap}
 .sbig{width:min(980px,94vw);height:min(660px,88vh);background:var(--panel);border:1px solid var(--line);border-radius:16px;display:flex;overflow:hidden;position:relative;box-shadow:0 20px 60px #0007}
-.snav{width:230px;flex:none;border-right:1px solid var(--line);padding:18px 12px;background:var(--side)}
+.snav{width:230px;flex:none;border-right:1px solid var(--line);padding:18px 12px;background:var(--side);display:flex;flex-direction:column}
+.snav .slogout{margin-top:auto;color:var(--muted)}            /* at the bottom of the column */
+.snav .slogout:hover{color:var(--danger);background:var(--panel)}
 .snav h4{margin:0 8px 10px;font-size:12px;font-weight:500;color:var(--muted)}
 .snav div{padding:8px 10px;border-radius:8px;cursor:pointer}
 .snav div.act{background:var(--panel)}
 .scont{flex:1;overflow:auto;padding:28px 36px}
 .scont h2{margin:0 0 18px;font-size:17px;font-weight:600}
-.sx{position:absolute;top:12px;right:14px;border:0;background:none;color:var(--muted);font-size:16px;padding:6px 9px;border-radius:8px}
+.sx{position:absolute;top:12px;right:14px;border:0;background:none;color:var(--muted);font-size:16px;padding:7px;border-radius:8px;display:grid;place-items:center}
+/* the close/remove icon (XMARK): as big as the text around it */
+svg.xm{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;display:inline-block;vertical-align:-.125em;flex:none}
 .sx:hover{color:var(--text);background:var(--side)}
 .ucard{border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:16px;background:var(--bg)}
 .uhead{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px}
@@ -341,7 +345,7 @@ main.newchat .hello{padding-top:0}
 .skchips{display:flex;flex-wrap:wrap;gap:6px;flex-basis:100%;padding:2px 2px 0}
 .skchips:empty{display:none}
 .skchip{display:inline-flex;align-items:center;gap:6px;max-width:100%;border:1px solid color-mix(in srgb,var(--accent) 45%,var(--line));background:color-mix(in srgb,var(--accent) 12%,var(--panel));color:var(--text);border-radius:999px;padding:3px 4px 3px 9px;font-size:12px;cursor:pointer}
-.skchip svg{width:13px;height:13px;stroke:var(--accent);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.skchip>svg{width:13px;height:13px;stroke:var(--accent);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
 .skchip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .skchip button{border:0;background:none;color:var(--muted);width:18px;height:18px;border-radius:50%;display:grid;place-items:center;padding:0;font-size:10px;cursor:pointer}
 .skchip button:hover{color:var(--text);background:var(--side)}
@@ -553,8 +557,6 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
       <div class="ui upd" id="mUpdate" hidden><span>Update verfügbar</span><small id="mUpdN"></small></div>
       <div class="ui" id="mSettings"><span>Einstellungen</span><kbd>Strg+,</kbd></div>
       <div class="ui" id="mUsage"><span>Nutzung</span></div>
-      <hr>
-      <div class="ui" id="logout">Abmelden</div>
     </div>
     <button id="meBtn" type="button"><span class="av" id="av"></span><span id="who"></span></button>
   </div>
@@ -608,14 +610,15 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
   <div id="hsplit" title="Ziehen zum Anpassen (Doppelklick: zurücksetzen)"></div>
   <div id="pfile"></div>
   <div id="vsplit"></div>
-  <div id="pterm"><div class="thead"><span>Terminal</span><span class="sp"></span><button id="tclose" title="Schließen">✕</button></div><div id="tbody"></div></div>
+  <div id="pterm"><div class="thead"><span>Terminal</span><span class="sp"></span><button id="tclose" title="Schließen"><svg class="xm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div><div id="tbody"></div></div>
 </section>
 </div>
 </div>
 <div class="overlay" id="settings"><div class="sbig">
-  <div class="snav"><h4>Einstellungen</h4><div class="act" data-page="appearance">Darstellung</div><div data-page="providers">Anbieter</div><div data-page="usage">Nutzung</div><div data-page="updates">Updates</div></div>
+  <div class="snav"><h4>Einstellungen</h4><div class="act" data-page="appearance">Darstellung</div><div data-page="providers">Anbieter</div><div data-page="usage">Nutzung</div><div data-page="updates">Updates</div>
+    <div class="slogout" id="logout" title="Bei allen Anbietern abmelden">Abmelden</div></div>
   <div class="scont" id="scont"></div>
-  <button class="sx" id="sclose" title="Schließen">✕</button>
+  <button class="sx" id="sclose" title="Schließen"><svg class="xm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
 </div></div>
 <div class="overlay" id="lightbox"><div class="lbox"></div></div>
 <div class="menu" id="chatMenu"></div>
@@ -673,6 +676,7 @@ const $ = id => document.getElementById(id);
 const OW = "/ow/";
 const uuid = () => crypto.randomUUID();
 const now = () => Math.floor(Date.now() / 1000);
+const XMARK = '<svg class="xm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';   // close/remove: an icon, not the ✕ character (its fallback font draws it stretched)
 const esc = s => s.replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
 
 let chat = null;          // {id|null, title, model, history:{messages,currentId}, updated_at}
@@ -881,7 +885,10 @@ async function chromiumLogin(pid) {
   } catch (e) { $("loginMsg").textContent = "Anmeldung fehlgeschlagen oder abgelaufen. Bitte erneut versuchen."; }
 }
 $("loginSettings").onclick = e => { e.preventDefault(); $("login").classList.remove("on"); openSettings("providers"); };
-$("logout").onclick = async () => { await fetch("/app/logout", {method: "POST"}); shellPost({logout: true}); chat = null; showLogin(); };
+$("logout").onclick = async () => {        // in the settings, bottom left
+  closeSettings();
+  await fetch("/app/logout", {method: "POST"}); shellPost({logout: true}); chat = null; showLogin();
+};
 
 // ---- models / chat list ------------------------------------------------
 let MODEL_META = {};
@@ -1731,7 +1738,7 @@ function renderPanel() {
   const el = $("pfile"); layout();
   if (!panel.open) return;
   const t = panel.tabs.find(x => x.path === panel.active);
-  const tabs = panel.tabs.map(x => `<div class="tab${x === t ? " act" : ""}" data-tab="${esc(x.path)}"><span>${esc(base(x.path))}</span><b data-close="${esc(x.path)}">✕</b></div>`).join("");
+  const tabs = panel.tabs.map(x => `<div class="tab${x === t ? " act" : ""}" data-tab="${esc(x.path)}"><span>${esc(base(x.path))}</span><b data-close="${esc(x.path)}">${XMARK}</b></div>`).join("");
   let sub = "", body = "";
   if (t) {
     const code = t.mode === "code";
@@ -2044,7 +2051,7 @@ $("log").addEventListener("click", e => {
   if (b && pending[b.dataset.id]) pending[b.dataset.id](b.dataset.act);
 });
 function showModeMenu() {
-  const row = (attr, label, extra, on, del) => `<div class="item" ${attr}><span>${label}${extra ? `<small>${esc(extra)}</small>` : ""}</span>${on ? '<span class="ck">✓</span>' : ""}${del ? `<button class="x" data-del="${esc(del)}" title="Verbindung entfernen">✕</button>` : ""}</div>`;
+  const row = (attr, label, extra, on, del) => `<div class="item" ${attr}><span>${label}${extra ? `<small>${esc(extra)}</small>` : ""}</span>${on ? '<span class="ck">✓</span>' : ""}${del ? `<button class="x" data-del="${esc(del)}" title="Verbindung entfernen">${XMARK}</button>` : ""}</div>`;
   const list = connections.map(c => row(`data-conn="${esc(c.id)}"`, esc(c.name), c.host, chat.conn === c.id, c.id)).join("");
   $("modeMenu").innerHTML = row('data-conn=""', "Lokal", "", !chat.conn)
     + `<div class="item has-fly" data-ssh="1"><span>SSH</span><span>›</span><div class="fly">${list}${list ? "<hr>" : ""}${row('data-add="1"', "SSH-Verbindung hinzufügen…", "", false)}</div></div>`;
@@ -2229,12 +2236,25 @@ function showProvider(pid) {
   menuProv = pid;
   $("modelMenu").innerHTML = modelMenuHtml();
 }
+// One height for every provider: the menu opens upwards, so a shorter list would move the first model (and the
+// provider under the mouse would slip away). The tallest provider's list sets it, capped like before.
+function fixModelMenuHeight(menu) {
+  const keep = menuProv;
+  menu.style.height = "";
+  let h = 0;
+  for (const pid of new Set(Object.values(MODEL_META).map(m => m.provider))) {
+    menuProv = pid; menu.innerHTML = modelMenuHtml();
+    h = Math.max(h, menu.offsetHeight);
+  }
+  menuProv = keep; menu.innerHTML = modelMenuHtml();
+  if (h) menu.style.height = h + "px";
+}
 $("modelBtn").onclick = () => {
   if (streaming) return;
   const menu = $("modelMenu");
   if (menu.classList.contains("on")) return menu.classList.remove("on");
   menuProv = null; menu.innerHTML = modelMenuHtml();
-  menu.classList.add("on"); placeMenu(menu);
+  menu.classList.add("on"); fixModelMenuHeight(menu); placeMenu(menu);
   const ck = menu.querySelector(".mlist .ck"); if (ck) ck.parentElement.scrollIntoView({block: "nearest"});
 };
 $("modelMenu").onclick = e => {
@@ -2412,7 +2432,7 @@ function attHtml(a, removable) {
     : [a.pages > 1 ? `${a.pages} ${/\.(pptx?|pptm|odp)$/i.test(a.name) ? "Folien" : "Seiten"}` : "", fmtTok(a.text.length)].filter(Boolean).join(" · "));
   return `<div class="att${a.busy ? " busy" : ""}${a.error ? " err" : ""}" data-att="${esc(a.id)}"${a.text ? " data-text" : ""} title="${esc(a.error ? a.name + ": " + a.error : a.name)}">`
     + `${thumb}<span class="nm"><b>${esc(a.name)}</b><small>${esc(meta)}</small></span>`
-    + (removable ? `<button type="button" class="rm" data-rm="${esc(a.id)}" title="Entfernen">✕</button>` : "") + `</div>`;
+    + (removable ? `<button type="button" class="rm" data-rm="${esc(a.id)}" title="Entfernen">${XMARK}</button>` : "") + `</div>`;
 }
 const renderAtts = () => { $("atts").innerHTML = atts.map(a => attHtml(a, true)).join(""); };
 
@@ -2482,8 +2502,8 @@ function fitSkillFly() {                    // the submenu opens beside its row 
 }
 function renderSkillChips() {
   $("skillChips").innerHTML = (chat && chat.webSearch ? `<span class="skchip" title="Websuche ist für diesen Chat an">${GLOBE}<span>Websuche</span>`
-    + `<button type="button" data-rmweb="1" title="Websuche ausschalten">✕</button></span>` : "") + (chat && chat.skills || []).map(s => `<span class="skchip" data-sk="${esc(skillKey(s))}" title="${esc(s.name)} – Klick zeigt den Text">`
-    + `${SPARK}<span>${esc(s.name)}</span><button type="button" data-rmskill="${esc(skillKey(s))}" title="Skill ausschalten">✕</button></span>`).join("");
+    + `<button type="button" data-rmweb="1" title="Websuche ausschalten">${XMARK}</button></span>` : "") + (chat && chat.skills || []).map(s => `<span class="skchip" data-sk="${esc(skillKey(s))}" title="${esc(s.name)} – Klick zeigt den Text">`
+    + `${SPARK}<span>${esc(s.name)}</span><button type="button" data-rmskill="${esc(skillKey(s))}" title="Skill ausschalten">${XMARK}</button></span>`).join("");
 }
 $("plus").onclick = () => {
   const m = $("plusMenu");
@@ -2691,7 +2711,9 @@ const TOOLS = [
 ].map(([name, description, props, required]) => ({type: "function", function: {name, description, parameters: {type: "object",
   properties: Object.fromEntries(Object.entries(props).map(([k, t]) => [k, {type: t}])), required}}}));
 
-const sysPrompt = () => `You are a coding agent working in the user's project folder: ${chat.workdir}${connOf(chat.conn) ? `
+// The situation and the rules, but no role ("You are a coding agent"): given one, models fill in who they are,
+// and DeepSeek called itself Claude.
+const sysPrompt = () => `The user's project folder: ${chat.workdir}${connOf(chat.conn) ? `
 This folder is on the remote host "${connOf(chat.conn).name}" (${connOf(chat.conn).host}), reached over SSH. All tools run on that host, not on the user's own computer.` : ""}
 Use the tools to explore the project, read and edit files, and run commands. Paths are relative to that folder.${boxed() ? `
 Shell commands run in a sandbox. Only this folder is shared with the user (except .git/hooks and .git/config, which you cannot change). \

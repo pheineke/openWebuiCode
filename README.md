@@ -108,8 +108,8 @@ Beim ersten Start siehst du den Anmeldebildschirm mit allen eingerichteten Anbie
 Läuft eine Sitzung ab, meldet die App dich still neu an: nach einer Hochschul-Anmeldung über deine noch gültige
 Sitzung bei der Hochschule (ohne Passwort, solange die Hochschule dich kennt, meist einige Stunden), sonst mit
 dem gespeicherten Browserprofil. Klappt das nicht, steht der Anbieter als „Sitzung abgelaufen“ im
-Anmeldebildschirm; Hochschule und Benutzername sind dann schon eingetragen. Abmelden: Profil unten
-links → Abmelden (alle) oder **Strg+,** → **Anbieter** → Abmelden (einer). Weitere Anbieter hinzufügen:
+Anmeldebildschirm; Hochschule und Benutzername sind dann schon eingetragen. Abmelden: **Strg+,**
+(Einstellungen) → **Abmelden** unten links (alle) oder → **Anbieter** → Abmelden (einer). Weitere Anbieter hinzufügen:
 **Strg+,** → **Anbieter**.
 
 ## Benutzen

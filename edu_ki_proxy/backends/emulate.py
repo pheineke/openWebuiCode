@@ -34,7 +34,8 @@ def tool_instruction(tools: list[dict]) -> str:
             defs.append({"name": f.get("name"), "description": f.get("description"),
                          "parameters": f.get("parameters")})
     return (
-        "You are a coding agent with access to the tools below.\n"
+        # no role ("You are a coding agent"): given one, models fill in who they are (DeepSeek: "Claude")
+        "The tools below are available.\n"
         "When you need a tool, reply with one fenced block tagged `tool` and nothing else in that block:\n"
         "```tool\n"
         '{"name": "read_file", "arguments": {"path": "src/main.py"}}\n'
