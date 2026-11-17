@@ -80,9 +80,10 @@ function cosmicSvg(c, k) {                // space: sparkles, starbursts, planet
     + `<g fill="currentColor" fill-opacity="${o(.06)}"><circle cx="98" cy="34" r="2"/><circle cx="164" cy="108" r="1.8"/><circle cx="148" cy="210" r="2"/></g></svg>`;
 }
 const PATTERNS = {bubbles: bubblesSvg, doodles: doodlesSvg, cosmic: cosmicSvg};
-function chatPattern(kind, acc, mode) {
+function chatPattern(kind, acc, mode, preview = false) {   // preview: the settings' tiles, small, so stronger
   if (!PATTERNS[kind]) return "none";
-  return `url("data:image/svg+xml,${encodeURIComponent(PATTERNS[kind](acc, {light: .5, dark: .32, black: .7}[mode] || .5))}")`;
+  const k = preview ? 3 : {light: .5, dark: .32, black: .7}[mode] || .5;
+  return `url("data:image/svg+xml,${encodeURIComponent(PATTERNS[kind](acc, k))}")`;
 }
 function resolvedMode(m) { return m === "auto" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : m; }
 function lightness(hex) {
@@ -237,6 +238,12 @@ table.um .n{text-align:right;font-variant-numeric:tabular-nums}
 .seg{display:flex;background:var(--bg);border-radius:10px;padding:3px;gap:2px;flex:none}
 .seg button{border:0;background:none;padding:6px 12px;border-radius:8px;color:var(--muted);font-size:13px}
 .seg button.act{background:var(--panel);color:var(--text);box-shadow:0 0 0 1px var(--line)}
+/* chat background: a tile per pattern, the pattern on the chat's own background */
+.bgpick{display:flex;gap:8px;flex:none}
+.bgpick button{width:92px;height:66px;border:1px solid var(--line);border-radius:10px;background-color:var(--bg);background-size:100px 100px;background-position:-4px -6px;display:flex;align-items:flex-end;justify-content:center;padding:0 0 5px;font-size:12px;color:var(--muted)}
+.bgpick button span{background:var(--bg);padding:0 5px;border-radius:5px}
+.bgpick button:hover{border-color:var(--accent)}
+.bgpick button.act{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);color:var(--text)}
 .sw{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end;max-width:360px}
 .dot{width:26px;height:26px;border-radius:50%;border:2px solid transparent;padding:0;cursor:pointer;box-shadow:inset 0 0 0 2px var(--panel)}
 .dot.act{border-color:var(--text)}
@@ -1507,7 +1514,8 @@ function renderAppearance() {
       <div class="sw">${Object.entries(ACCENTS).map(([k, v]) => `<button class="dot${a.accent === k ? " act" : ""}" data-acc="${k}" title="${v[2]}" style="background:${v[dark ? 1 : 0]}"></button>`).join("")}
         <label class="custom" title="Eigene Farbe"><input type="color" id="accCustom" value="${custom ? a.accent : accentFor(a, dark)}">Eigene</label></div></div>
     <div class="srow"><div><b>Chat-Hintergrund</b><p>Ein dezentes Muster hinter den Nachrichten, in der Akzentfarbe.</p></div>
-      <div class="seg">${Object.entries(CHAT_BGS).map(([k, l]) => `<button data-chatbg="${k}" class="${a.chatbg === k ? "act" : ""}">${l}</button>`).join("")}</div></div>`;
+      <div class="bgpick">${Object.entries(CHAT_BGS).map(([k, l]) => `<button data-chatbg="${k}" class="${a.chatbg === k ? "act" : ""}" `
+        + `style='background-image:${chatPattern(k, accentFor(a, dark), resolvedMode(a.mode), true)}'><span>${l}</span></button>`).join("")}</div></div>`;
   $("accCustom").oninput = e => { const a2 = {...loadAppearance(), accent: e.target.value}; try { localStorage.appearance = JSON.stringify(a2); } catch {} applyAppearance(a2); };
   $("accCustom").onchange = () => renderSettings();
 }
