@@ -33,7 +33,7 @@ function bubblesSvg(c, k) {
 }
 function chatPattern(kind, acc, mode) {
   if (kind !== "bubbles") return "none";
-  return `url("data:image/svg+xml,${encodeURIComponent(bubblesSvg(acc, {light: .75, dark: .6, black: .55}[mode] || .75))}")`;
+  return `url("data:image/svg+xml,${encodeURIComponent(bubblesSvg(acc, {light: .9, dark: .75, black: .7}[mode] || .9))}")`;
 }
 function resolvedMode(m) { return m === "auto" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : m; }
 function lightness(hex) {
