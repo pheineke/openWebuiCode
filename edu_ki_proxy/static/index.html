@@ -195,11 +195,11 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if
 <script src="/vendor/xterm.js"></script>
 <script src="/vendor/xterm-addon-fit.js"></script>
 <style>
-:root{--bg:#f6f6f4;--panel:#fff;--side:#ecece9;--text:#1f1f1f;--muted:#76767a;--line:#dcdcd8;--accent:#1f7a80;--accent-fg:#fff;--user:color-mix(in srgb,var(--accent) 14%,var(--bg));--code:#171a1c;--code-fg:#e6edf3;--danger:#b3261e;--h-kw:#a626a4;--h-str:#50803a;--h-num:#a86a00;--h-com:#8b8b92;--h-fn:#2a6fb5;--h-tag:#c0392b}
-:root[data-theme=dark]{--bg:#161616;--panel:#1e1e1e;--side:#121212;--text:#e9e9e9;--muted:#8d8d92;--line:#2b2b2d;--user:color-mix(in srgb,var(--accent) 18%,var(--bg));--code:#0d0d0e;--danger:#f2b8b5;--h-kw:#c678dd;--h-str:#98c379;--h-num:#d19a66;--h-com:#7f848e;--h-fn:#61afef;--h-tag:#e06c75}
+:root{--bg:#f6f6f4;--panel:#fff;--side:#ecece9;--text:#1f1f1f;--muted:#76767a;--line:#dcdcd8;--accent:#1f7a80;--accent-fg:#fff;--user:color-mix(in srgb,var(--accent) 14%,var(--bg));--code:#171a1c;--code-fg:#e6edf3;--danger:#b3261e;--warn:#9a5b00;--h-kw:#a626a4;--h-str:#50803a;--h-num:#a86a00;--h-com:#8b8b92;--h-fn:#2a6fb5;--h-tag:#c0392b}
+:root[data-theme=dark]{--bg:#161616;--panel:#1e1e1e;--side:#121212;--text:#e9e9e9;--muted:#8d8d92;--line:#2b2b2d;--user:color-mix(in srgb,var(--accent) 18%,var(--bg));--code:#0d0d0e;--danger:#f2b8b5;--warn:#e8a948;--h-kw:#c678dd;--h-str:#98c379;--h-num:#d19a66;--h-com:#7f848e;--h-fn:#61afef;--h-tag:#e06c75}
 :root{color-scheme:light}
 :root[data-theme=dark],:root[data-theme=black]{color-scheme:dark}   /* controls, scrollbars and pop-ups the browser draws follow the theme */
-:root[data-theme=black]{--bg:#000;--panel:#0b0b0c;--side:#000;--text:#ececec;--muted:#8a8a8f;--line:#1e1e21;--user:color-mix(in srgb,var(--accent) 20%,#000);--code:#050505;--danger:#f2b8b5;--h-kw:#c678dd;--h-str:#98c379;--h-num:#d19a66;--h-com:#7f848e;--h-fn:#61afef;--h-tag:#e06c75}
+:root[data-theme=black]{--bg:#000;--panel:#0b0b0c;--side:#000;--text:#ececec;--muted:#8a8a8f;--line:#1e1e21;--user:color-mix(in srgb,var(--accent) 20%,#000);--code:#050505;--danger:#f2b8b5;--warn:#e8a948;--h-kw:#c678dd;--h-str:#98c379;--h-num:#d19a66;--h-com:#7f848e;--h-fn:#61afef;--h-tag:#e06c75}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--text);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;display:flex}
@@ -408,6 +408,15 @@ details.think div{white-space:pre-wrap;border-left:2px solid var(--line);padding
 .call .st{font-size:12px;color:var(--muted)}
 .call.error{border-color:var(--danger)}.call.error .st{color:var(--danger)}
 .call.approval{border-color:var(--accent)}
+/* A run stopped because the model went round in circles: its repeated calls, and why it stopped */
+.call.rep{border-color:color-mix(in srgb,var(--warn) 60%,var(--line))}
+.call .repn{font-size:11.5px;color:var(--warn);white-space:nowrap;font-variant-numeric:tabular-nums}
+.stuck{display:flex;gap:10px;margin:10px 0 4px;padding:11px 14px;border:1px solid color-mix(in srgb,var(--warn) 45%,var(--line));border-left:3px solid var(--warn);border-radius:10px;background:color-mix(in srgb,var(--warn) 8%,var(--panel));font-size:13.5px;line-height:1.5}
+.stuck svg{flex:none;width:18px;height:18px;margin-top:2px;fill:none;stroke:var(--warn);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.stuck b{display:block;margin-bottom:3px}
+.stuck p{margin:0 0 4px}
+.stuck p:last-child{margin:0;color:var(--muted);font-size:13px}
+.stuck code{font:12.5px ui-monospace,Menlo,Consolas,monospace;background:color-mix(in srgb,var(--warn) 12%,transparent);padding:1px 5px;border-radius:5px;overflow-wrap:anywhere}
 .call pre{margin:0;padding:10px 12px;background:var(--code);color:var(--code-fg);border-radius:0 0 10px 10px;max-height:320px;overflow:auto;font:12px/1.45 ui-monospace,Menlo,Consolas,monospace}
 .call pre code{background:none;padding:0}
 .call .btns{display:flex;gap:8px;padding:8px 10px;border-top:1px solid var(--line)}
@@ -2296,6 +2305,19 @@ if (+localStorage.pw) setPW(+localStorage.pw);
 $("ptoggle").onclick = () => { panel.open = !panel.open; if (panel.open && !panel.tabs.length) loadDir(panel.dir); renderPanel(); };
 const READONLY = new Set(["read_file", "list_dir", "glob", "grep"]);
 const pending = {};
+function callTitle(c, a) {         // a: the parsed arguments
+  if (!a) { a = {}; try { a = JSON.parse(c.args || "{}"); } catch {} }
+  return {bash: "$ " + (a.command || ""), read_file: "Lesen " + (a.path || ""), write_file: "Schreiben " + (a.path || ""),
+    edit_file: "Ändern " + (a.path || ""), list_dir: "Ordner " + (a.path || "."), glob: "Glob " + (a.pattern || ""),
+    grep: "Suche " + (a.pattern || ""), web_search: "Websuche: " + (a.query || "")}[c.name] || c.name;
+}
+const LOOP_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>';
+function stuckHtml(s) {            // why a run stopped by itself: the same calls with the same results, s.times in a row
+  return `<div class="stuck" role="status">${LOOP_ICON}<div><b>Angehalten: Das Modell dreht sich im Kreis</b>`
+    + `<p>Es hat ${s.times}-mal hintereinander <code>${esc(s.what)}</code> aufgerufen und jedes Mal dasselbe Ergebnis bekommen. `
+    + `Ein weiterer Versuch hätte nichts Neues gebracht.</p>`
+    + `<p>Sag ihm, was es anders machen soll, oder generiere die Antwort mit einem anderen Modell neu.</p></div></div>`;
+}
 function callHtml(c) {
   let a = {}; try { a = JSON.parse(c.args || "{}"); } catch {}
   if ((c.name === "write_file" || c.name === "edit_file") && c.status === "done") {
@@ -2306,9 +2328,7 @@ function callHtml(c) {
     const label = c.name === "edit_file" ? "Geändert" : (m.created === false ? "Überschrieben" : "Erstellt");
     return `<div class="frow" data-file="${esc(path)}"><span>${label}</span><span class="fn">${esc(base(path))}</span><span class="plus">+${added}</span><span class="minus">−${removed}</span><span class="chev">›</span></div>`;
   }
-  const title = {bash: "$ " + (a.command || ""), read_file: "Lesen " + (a.path || ""), write_file: "Schreiben " + (a.path || ""),
-    edit_file: "Ändern " + (a.path || ""), list_dir: "Ordner " + (a.path || "."), glob: "Glob " + (a.pattern || ""),
-    grep: "Suche " + (a.pattern || ""), web_search: "Websuche: " + (a.query || "")}[c.name] || c.name;
+  const title = callTitle(c, a);
   let detail = c.name === "write_file" ? (a.content || "") : c.name === "edit_file"
     ? (a.old_string || "").split("\n").map(l => "- " + l).join("\n") + "\n" + (a.new_string || "").split("\n").map(l => "+ " + l).join("\n")
     : c.name === "bash" ? (a.command || "") : "";
@@ -2323,7 +2343,8 @@ function callHtml(c) {
     + `<div class="btns"><button data-act="allow" data-id="${id}">Erlauben</button>`
     + (unboxed ? "" : `<button data-act="always" data-id="${id}" title="Ab jetzt läuft in diesem Chat alles ohne Rückfrage; Befehle bleiben abgeschottet im Ordner">Auto für diesen Chat</button>`)
     + `<button data-act="deny" data-id="${id}">Ablehnen</button></div>`;
-  return `<details class="call ${c.status}" data-k="${esc(k)}"${open ? " open" : ""}><summary><span class="ttl">${esc(title)}</span><span class="st">${label}</span></summary>${detail ? `<pre><code>${esc(detail)}</code></pre>` : ""}${btns}</details>`;
+  const rep = c.rep ? `<span class="repn" title="Gleicher Aufruf, gleiches Ergebnis wie davor">↻ ${esc(c.rep)}</span>` : "";
+  return `<details class="call ${c.status}${c.rep ? " rep" : ""}" data-k="${esc(k)}"${open ? " open" : ""}><summary><span class="ttl">${esc(title)}</span>${rep}<span class="st">${label}</span></summary>${detail ? `<pre><code>${esc(detail)}</code></pre>` : ""}${btns}</details>`;
 }
 function msgHtml(m) {
   if (m.role === "user" && m.id === editId)
@@ -2346,7 +2367,7 @@ function msgHtml(m) {
   }).join("");
   inner += sourcesHtml(m);
   if (!m.done) inner += statusHtml(m);
-  const err = m.error ? `<div class="err">${esc(m.error)}</div>` : "";
+  const err = (m.stuck ? stuckHtml(m.stuck) : "") + (m.error ? `<div class="err">${esc(m.error)}</div>` : "");
   return `<div class="msg"><div class="who">${esc(m.modelName || modelName(m.model) || "")}</div>${inner}${err}${m.done === false ? "" : actsHtml(m)}</div>`;
 }
 
@@ -3495,7 +3516,11 @@ async function reply(u) {          // a new answer to user message u (also: "reg
       render();
       const sig = JSON.stringify(step.calls.map(c => [c.name, c.args, c.result]));
       same = sig === prev ? same + 1 : 1; prev = sig;
-      if (same >= SAME_TURNS) { a.error = `Abbruch: Das Modell hat ${SAME_TURNS}-mal hintereinander dasselbe aufgerufen und dasselbe Ergebnis bekommen.`; break; }
+      if (same >= SAME_TURNS) {           // shown as such: the repeated calls marked, and a note on why it stopped
+        a.steps.slice(-SAME_TURNS).forEach((s, i) => s.calls.forEach(c => { c.rep = `${i + 1}/${SAME_TURNS}`; }));
+        a.stuck = {times: SAME_TURNS, what: step.calls.map(c => callTitle(c)).join(", ").slice(0, 160)};
+        break;
+      }
     }
   } catch (e) { if (e.name !== "AbortError") a.error = String(e.message || e); }
   if (missing.length && !a.error) a.error = `Skill „${missing.join("“, „")}“ konnte nicht geladen werden; die Antwort kam ohne ihn.`;
@@ -3505,7 +3530,7 @@ async function reply(u) {          // a new answer to user message u (also: "reg
   for (const s of a.steps) for (const c of s.calls)
     if (c.result === undefined) { c.status = "denied"; c.result = "Cancelled."; }
   a.content = a.steps.map(s => s.content).filter(Boolean).join("\n\n");
-  applog("answer", {model: chat.model, steps: a.steps.length, tools: !!chat.workdir, aborted: ctrl.signal.aborted, error: a.error || null});
+  applog("answer", {model: chat.model, steps: a.steps.length, tools: !!chat.workdir, aborted: ctrl.signal.aborted, error: a.error || null, stuck: !!a.stuck});
   a.done = true; streaming = null; render();
   if (a.content || a.steps.some(s => s.calls.length) || !a.error) { try { await save(); } catch (e) { a.error = "Sync fehlgeschlagen: " + e.message; render(); } }
   loadList();
