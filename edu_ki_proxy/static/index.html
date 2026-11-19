@@ -3469,6 +3469,7 @@ async function send(text, attachments = [], parent = chat.history.currentId) {  
   await reply(u);
 }
 
+const SAME_TURNS = 3;
 async function reply(u) {          // a new answer to user message u (also: "regenerate"), with the model now selected
   const ch = chat, m = chat.history.messages;
   const a = {id: uuid(), parentId: u.id, childrenIds: [], role: "assistant", content: "", steps: [], model: chat.model,
@@ -3482,14 +3483,19 @@ async function reply(u) {          // a new answer to user message u (also: "reg
   await Promise.all((chat.skills || []).map(sk => skillContent(sk).catch(() => { missing.push(sk.name); })));
   if (searchProviders === null) await loadSearchProviders();   // webOn() and webPrompt() need to know
   try {
-    for (let turn = 0; turn < 40 && !ctrl.signal.aborted; turn++) {
+    // No fixed number of steps: the run goes on until the model is done or the stop button ends it. Only a model
+    // going round in circles stops: the same calls with the same results, SAME_TURNS times in a row.
+    let same = 0, prev = "";
+    while (!ctrl.signal.aborted) {
       const step = {content: "", reasoning: "", calls: []};
       a.steps.push(step);
       await streamStep(payload(a.id), step, ctrl);
       if (!step.calls.length) break;
       for (const c of step.calls) await runCall(c, ctrl, a);
       render();
-      if (turn === 39) a.error = "Abbruch: Limit von 40 Schritten erreicht.";
+      const sig = JSON.stringify(step.calls.map(c => [c.name, c.args, c.result]));
+      same = sig === prev ? same + 1 : 1; prev = sig;
+      if (same >= SAME_TURNS) { a.error = `Abbruch: Das Modell hat ${SAME_TURNS}-mal hintereinander dasselbe aufgerufen und dasselbe Ergebnis bekommen.`; break; }
     }
   } catch (e) { if (e.name !== "AbortError") a.error = String(e.message || e); }
   if (missing.length && !a.error) a.error = `Skill „${missing.join("“, „")}“ konnte nicht geladen werden; die Antwort kam ohne ihn.`;
