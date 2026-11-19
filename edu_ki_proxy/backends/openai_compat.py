@@ -53,8 +53,9 @@ class OpenAICompat(Backend):
         base = (p.get("base_url") or "").rstrip("/")
         return [base + "/models"] + ([] if VERSION.search(base) else [base + "/v1/models"])
 
-    async def _remote_models(self, p: dict) -> list[str]:
-        """The server's model ids; raises ProxyError with the reason when it lists none."""
+    async def _remote_models(self, p: dict) -> tuple[list[str], str]:
+        """(the server's model ids, the base URL that lists them); raises ProxyError with the reason when it lists none.
+        A base URL without /v1 that has its models under /v1 is stored with it: chats need it too."""
         name, tried = p.get("name") or p.get("id"), []
         async with httpx.AsyncClient(timeout=MODELS_TIMEOUT) as c:
             for url in self._model_urls(p):
@@ -67,15 +68,15 @@ class OpenAICompat(Backend):
                                      else f"{name} verlangt einen API-Schlüssel.", 401)
                 ids = _model_ids(r)
                 if ids is not None:
-                    base = (p.get("base_url") or "").rstrip("/")
-                    if url == base + "/v1/models" and p.get("id"):   # base URL without /v1: chats need it too
-                        providers.update(p["id"], base_url=base + "/v1")
-                    return ids
+                    base = url.removesuffix("/models")
+                    if base != (p.get("base_url") or "").rstrip("/") and p.get("id"):
+                        providers.update(p["id"], base_url=base)
+                    return ids, base
                 tried.append(f"{url}: HTTP {r.status_code}" if r.status_code != 200 else f"{url}: keine Modellliste")
         raise ProxyError(f"{name} liefert keine Modellliste ({'; '.join(tried)}).", 502)
 
     async def models(self, p: dict) -> list[tuple[str, str]]:
-        mids = [str(m) for m in (p.get("models") or []) if str(m).strip()] or await self._remote_models(p)
+        mids = [str(m) for m in (p.get("models") or []) if str(m).strip()] or (await self._remote_models(p))[0]
         return [(m, m) for m in mids]
 
     async def chat(self, p: dict, data: dict):
@@ -100,6 +101,7 @@ class OpenAICompat(Backend):
 
     async def test(self, p: dict) -> dict:
         try:
-            return {"ok": True, "models": len(await self._remote_models(p))}
+            ids, base = await self._remote_models(p)
+            return {"ok": True, "models": len(ids), "base_url": base}
         except ProxyError as e:
             return {"ok": False, "error": e.message}

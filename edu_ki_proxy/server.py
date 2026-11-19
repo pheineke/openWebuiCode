@@ -402,6 +402,26 @@ async def provider_list():
     return {"providers": providers.all_public(), "types": backends.types()}
 
 
+@app.post("/app/providers/check")
+async def provider_check(req: dict):
+    """Try a provider's settings before they are saved (start screen): {ok, models, base_url} or {ok: False, error}."""
+    b = backends.get(str(req.get("type") or ""))
+    if not b:
+        raise ProxyError("Unbekannter Anbieter-Typ.", 400)
+    try:
+        base = providers.clean_base(req.get("base_url") or b.default_base)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    if not base:
+        return {"ok": False, "error": "Bitte eine Basis-URL angeben."}
+    p = {"type": b.type, "name": str(req.get("name") or "").strip() or "Der Server", "base_url": base,
+         "api_key": str(req.get("api_key") or "").strip()}
+    try:
+        return await b.test(p)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @app.post("/app/providers")
 async def provider_add(req: dict):
     try:

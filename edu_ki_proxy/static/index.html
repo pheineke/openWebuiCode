@@ -370,7 +370,7 @@ details.think div{white-space:pre-wrap;border-left:2px solid var(--line);padding
 /* Shibboleth login in the app's own form, and the university's further steps (consent, codes) */
 .shib{display:flex;flex-direction:column;gap:12px;text-align:left;width:min(400px,calc(100vw - 96px))}
 .shib[hidden],.shib [hidden]{display:none}
-#shibForm{align-items:stretch;flex-wrap:nowrap;background:none;border:0;border-radius:0;padding:0}   /* not the composer's form look */
+#shibForm,#apiForm{align-items:stretch;flex-wrap:nowrap;background:none;border:0;border-radius:0;padding:0}   /* not the composer's form look */
 .shead{display:flex;align-items:center;gap:6px;margin-bottom:2px}
 #login .shead h1{margin:0;font-size:21px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #login .shead .back{background:transparent;color:var(--muted);padding:2px 9px 4px;margin-left:-10px;border-radius:8px;font-size:22px;line-height:1;font-weight:400}
@@ -391,6 +391,13 @@ details.think div{white-space:pre-wrap;border-left:2px solid var(--line);padding
 .shib .stable td:first-child{color:var(--muted);white-space:nowrap;width:1%}
 .shib .btnrow{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:4px}
 #login .shib button.sec{background:transparent;color:var(--text);border:1px solid var(--line);font-weight:500}
+.shib .apresets{display:flex;flex-wrap:wrap;gap:6px}
+#login .shib .apresets button{background:transparent;color:var(--text);border:1px solid var(--line);padding:5px 12px;border-radius:999px;font-weight:500;font-size:12.5px}
+#login .shib .apresets button:hover,#login .shib .apresets button.on{border-color:var(--accent)}
+#login .shib label small{font-weight:400;color:var(--muted)}
+#login .lfoot{display:flex;justify-content:center;flex-wrap:wrap;gap:6px 18px;font-size:12.5px;margin:16px 0 0}
+#login .lfoot a{color:var(--muted)}
+#login .lfoot a:hover{color:var(--text)}
 #login .shib button.sec:hover{border-color:var(--accent)}
 #login .shib .alt{font-size:12px;color:var(--muted);text-align:center}
 #login .shib .alt a{color:var(--muted)}
@@ -880,12 +887,27 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
 </div></div>
 <div id="login"><div class="card" style="max-width:520px">
   <div id="loginList">
-  <h1>Anmelden</h1>
-  <p>Wähle einen Anbieter. Zugangsdaten gehen nur an den Anbieter, bei Hochschulen nur an deine Hochschule.</p>
+  <h1>Womit möchtest du chatten?</h1>
+  <p>Melde dich bei deiner Hochschule an oder verbinde eine eigene API. Weitere Anbieter kannst du jederzeit in den Einstellungen hinzufügen.</p>
   <div id="loginProviders" style="display:flex;flex-direction:column;gap:8px;text-align:left"></div>
   <p id="loginMsg" style="margin-top:14px;font-size:13px"></p>
-  <p style="font-size:12px;margin:14px 0 0"><a href="#" id="loginSettings" style="color:var(--muted)">Anbieter verwalten</a></p>
+  <p class="lfoot"><a href="#" id="loginSkip">Ohne Anmeldung zu den Chats</a><a href="#" id="loginSettings">Anbieter verwalten</a></p>
   </div>
+  <form id="apiForm" class="shib" hidden>
+    <div class="shead"><button type="button" class="back" id="apiBack" title="Zurück zur Auswahl">‹</button><h1>Eigene API verbinden</h1></div>
+    <p class="umuted" style="margin:0">Ein Dienst mit OpenAI-kompatibler Schnittstelle, im Netz oder auf einem Rechner bei dir. Der Schlüssel bleibt auf diesem Rechner und geht nur an diesen Dienst.</p>
+    <div class="apresets" id="apiPresets">
+      <button type="button" data-url="https://api.openai.com/v1" data-name="OpenAI" data-key>OpenAI</button>
+      <button type="button" data-url="https://openrouter.ai/api/v1" data-name="OpenRouter" data-key>OpenRouter</button>
+      <button type="button" data-url="http://localhost:1234/v1" data-name="LM Studio">LM Studio</button>
+      <button type="button" data-url="http://localhost:11434/v1" data-name="Ollama">Ollama</button>
+    </div>
+    <label>Basis-URL<input id="apiBase" spellcheck="false" autocapitalize="off" placeholder="https://api.example.com/v1"></label>
+    <label>API-Schlüssel <small>leer lassen bei LM Studio und Ollama</small><input id="apiKey" type="password" autocomplete="off"></label>
+    <label>Name <small>optional</small><input id="apiName" spellcheck="false" placeholder="sonst die Adresse"></label>
+    <p class="smsg" id="apiMsg"></p>
+    <button type="submit" id="apiGo">Verbinden</button>
+  </form>
   <form id="shibForm" class="shib" hidden>
     <div class="shead"><button type="button" class="back" id="shibBack" title="Zurück zu den Anbietern">‹</button><h1 id="shibTitle">Anmelden</h1></div>
     <p class="umuted" style="margin:0">Mit deinem Hochschul-Account. Benutzername und Passwort gehen nur an deine Hochschule, die App speichert das Passwort nicht.</p>
@@ -964,9 +986,9 @@ function showLogin(msg = "") {
   const was = $("login").classList.contains("on");
   $("login").classList.add("on"); $("loginMsg").textContent = msg;
   if (!was || !shib) { shib = null; loginView("list"); }        // an open university form stays as it is
-  renderLoginProviders().then(() => {
+  renderLoginProviders().then(() => {     // the person chooses; only a university session that ran out goes straight back to its form
     const can = loginProviders.filter(p => p.login);
-    if (!shib && can.length === 1 && can[0].type === "openwebui" && !$("loginList").hidden) shibOpen(can[0]);   // only one: straight to its form
+    if (!shib && can.length === 1 && can[0].type === "openwebui" && can[0].expired && !$("loginList").hidden) shibOpen(can[0]);
   });
 }
 async function fetchProviders() {
@@ -978,14 +1000,16 @@ async function renderLoginProviders() {
   const box = $("loginProviders");
   try {
     loginProviders = await fetchProviders();
-    box.innerHTML = loginProviders.length ? loginProviders.map(p => `
-      <div class="ucard" style="margin:0;display:flex;align-items:center;gap:10px">
-        <div style="flex:1"><b>${esc(p.name)}</b><br><small class="umuted">${esc(providerTypeLabel(p.type))}${providerState(p)}</small></div>
-        ${p.login ? `<button data-pid="${esc(p.id)}">${p.logged_in ? "Erneut anmelden" : "Anmelden"}</button>` : `<small class="umuted">${p.logged_in ? "" : "API-Schlüssel fehlt"}</small>`}
-        ${p.login === "window" && inShell() ? `<button data-alt="${esc(p.id)}" class="alt" title="Anmeldung im Chromium-Fenster statt in der App">Chromium</button>` : ""}
-      </div>`).join("") : `<p class="umuted">Noch kein Anbieter eingerichtet. Öffne „Anbieter verwalten“.</p>`;
+    const card = (body, buttons) => `<div class="ucard" style="margin:0;display:flex;align-items:center;gap:10px"><div style="flex:1">${body}</div>${buttons}</div>`;
+    box.innerHTML = loginProviders.map(p => card(
+        `<b>${esc(p.name)}</b><br><small class="umuted">${esc(providerTypeLabel(p.type))}${providerState(p)}</small>`,
+        (p.login ? `<button data-pid="${esc(p.id)}">${p.logged_in ? "Erneut anmelden" : "Anmelden"}</button>` : "")
+        + (p.login === "window" && inShell() ? `<button data-alt="${esc(p.id)}" class="alt" title="Anmeldung im Chromium-Fenster statt in der App">Chromium</button>` : ""))).join("")
+      + card(`<b>Eigene API</b><br><small class="umuted">OpenAI-kompatibel: OpenAI, OpenRouter, LM Studio, Ollama …</small>`,
+             `<button data-api>Verbinden</button>`);
     box.querySelectorAll("button[data-pid]").forEach(b => b.onclick = () => loginProvider(b.dataset.pid));
     box.querySelectorAll("button[data-alt]").forEach(b => b.onclick = () => chromiumLogin(b.dataset.alt));
+    box.querySelector("button[data-api]").onclick = apiOpen;
   } catch { box.innerHTML = `<p class="umuted">Anbieter konnten nicht geladen werden.</p>`; }
 }
 // "window" providers log in inside the app window; "browser" ones (Google/Apple sign-in) in Chromium
@@ -998,8 +1022,9 @@ async function loginProvider(pid) {
 }
 // ---- Shibboleth (Open WebUI behind a university login): our own form, no browser --------------
 let shib = null;           // {pid, name} while the form or a further step is open
-function loginView(which) {        // "list" (providers), "form" (university login), "ask" (a further step)
+function loginView(which) {        // "list" (providers), "form" (university login), "ask" (a further step), "api" (own API)
   $("loginList").hidden = which !== "list"; $("shibForm").hidden = which !== "form"; $("shibAsk").hidden = which !== "ask";
+  $("apiForm").hidden = which !== "api";
 }
 const shibMsg = t => { $("shibMsg").textContent = t || ""; };
 async function shibOpen(p) {
@@ -1036,7 +1061,7 @@ function shibClose() {
   shib = null; $("shibPass").value = ""; loginView("list");
 }
 function shibBusy(on, btn = $("shibGo"), text = "Anmelden …") {
-  for (const b of document.querySelectorAll("#shibForm button, #shibAsk button")) b.disabled = on;
+  for (const b of document.querySelectorAll("#login .shib button")) b.disabled = on;
   if (on) { btn.dataset.label = btn.textContent; btn.textContent = text; } else if (btn.dataset.label) btn.textContent = btn.dataset.label;
 }
 async function shibResult(r) {
@@ -1114,6 +1139,38 @@ async function chromiumLogin(pid) {
   } catch (e) { $("loginMsg").textContent = "Anmeldung fehlgeschlagen oder abgelaufen. Bitte erneut versuchen."; }
 }
 $("loginSettings").onclick = e => { e.preventDefault(); $("login").classList.remove("on"); openSettings("providers"); };
+$("loginSkip").onclick = e => { e.preventDefault(); $("login").classList.remove("on"); };   // the chats stored here, no model yet
+// ---- own API (OpenAI-compatible) from the start screen: tried first, saved only when it lists models ----
+const apiMsg = t => { $("apiMsg").textContent = t || ""; };
+function apiOpen() {
+  apiMsg(""); loginView("api");
+  ($("apiBase").value ? $("apiKey") : $("apiBase")).focus();
+}
+$("apiBack").onclick = () => loginView("list");
+$("apiPresets").onclick = e => {
+  const b = e.target.closest("button[data-url]"); if (!b) return;
+  const names = [...$("apiPresets").querySelectorAll("button")].map(x => x.dataset.name);
+  $("apiBase").value = b.dataset.url;
+  if (!$("apiName").value.trim() || names.includes($("apiName").value.trim())) $("apiName").value = b.dataset.name;
+  $("apiPresets").querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
+  apiMsg(""); ("key" in b.dataset ? $("apiKey") : $("apiBase")).focus();     // a local server may run on another machine
+};
+$("apiBase").oninput = () => $("apiPresets").querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.url === $("apiBase").value.trim()));
+$("apiForm").onsubmit = async e => {
+  e.preventDefault();
+  const body = {type: "openai", base_url: $("apiBase").value.trim(), api_key: $("apiKey").value.trim(), name: $("apiName").value.trim()};
+  if (!body.base_url) { apiMsg("Bitte die Adresse der API angeben."); return $("apiBase").focus(); }
+  apiMsg(""); shibBusy(true, $("apiGo"), "Verbinde …");
+  try {
+    const r = await api("/app/providers/check", json("POST", body));
+    if (!r.ok) return apiMsg(r.error || "Keine Verbindung.");
+    if (!r.models) return apiMsg("Verbunden, aber der Dienst bietet keine Modelle an.");
+    await api("/app/providers", json("POST", {...body, base_url: r.base_url || body.base_url}));
+    $("apiKey").value = ""; loginView("list"); $("login").classList.remove("on");
+    await boot();
+  } catch (err) { apiMsg(errMsg(err)); }
+  finally { shibBusy(false, $("apiGo")); }
+};
 $("logout").onclick = async () => {        // in the settings, bottom left
   closeSettings();
   await fetch("/app/logout", {method: "POST"}); shellPost({logout: true}); chat = null; showLogin();
@@ -2360,7 +2417,7 @@ function forkAt(m) {
 }
 function sendEdit() {
   const old = chat.history.messages[editId], text = ($("editBox") || {}).value?.trim() ?? editDraft.trim();
-  if (!old || streaming || (!text && !(old.attachments || []).length)) return;
+  if (!old || streaming || (!text && !(old.attachments || []).length) || noModel()) return;
   editId = null;
   send(text, old.attachments || [], old.parentId);           // a new version of the question, next to the old one
 }
@@ -2378,7 +2435,7 @@ $("log").addEventListener("click", async e => {
     if (next && !streaming) { chat.history.currentId = leaf(next); render(); if (chat.id) save().catch(() => {}); }
   } else if (b.dataset.ma === "copy") { await copyText(m.content || ""); flash(b); }
   else if (b.dataset.ma === "edit" && !streaming) { editId = m.id; editDraft = m.content || ""; render(); }
-  else if (b.dataset.ma === "regen" && !streaming && m.parentId && chat.history.messages[m.parentId]) reply(chat.history.messages[m.parentId]);
+  else if (b.dataset.ma === "regen" && !streaming && m.parentId && chat.history.messages[m.parentId]) { if (!noModel()) reply(chat.history.messages[m.parentId]); }
   else if (b.dataset.ma === "fork" && !streaming) forkAt(m);
 });
 $("log").addEventListener("input", e => { if (e.target.id === "editBox") editDraft = e.target.value; });
@@ -2586,7 +2643,7 @@ function iconFailed(img) { badIcons.add(img.getAttribute("src")); img.style.visi
 $("modelIcon").onerror = () => { badIcons.add($("modelIcon").getAttribute("src")); $("modelIcon").hidden = true; };
 $("model").refreshLabel = () => {
   const o = $("model").selectedOptions[0], icon = modelIcon($("model").value), img = $("modelIcon");
-  $("modelBtn").querySelector("span").textContent = o ? o.text : "";
+  $("modelBtn").querySelector("span").textContent = o ? o.text : "Kein Modell";
   img.hidden = !icon || badIcons.has(icon);
   if (icon && img.getAttribute("src") !== icon) img.src = icon;
 };
@@ -2631,6 +2688,7 @@ function fixModelMenuHeight(menu) {
 }
 $("modelBtn").onclick = () => {
   if (streaming) return;
+  if (!Object.keys(MODEL_META).length) return showLogin();      // nothing to pick from: choose a provider first
   const menu = $("modelMenu");
   if (menu.classList.contains("on")) return menu.classList.remove("on");
   menuProv = null; menu.innerHTML = modelMenuHtml();
@@ -3449,9 +3507,15 @@ async function reply(u) {          // a new answer to user message u (also: "reg
 }
 
 let submitting = false;          // waiting for attachments that are still being read
+// No model to answer with yet (no provider, or none lists models): the start screen, where one is chosen.
+function noModel() {
+  if (chat && MODEL_META[chat.model]) return false;
+  showLogin("Für eine Antwort braucht es einen Anbieter."); return true;
+}
 $("form").onsubmit = async e => {
   e.preventDefault();
   if (streaming) return streaming.abort();
+  if (noModel()) return;                              // what was typed stays in the field
   if (submitting || (!$("input").value.trim() && !atts.length)) return;
   submitting = true;
   try { await Promise.all(atts.map(a => a.ready)); } finally { submitting = false; }
@@ -3486,18 +3550,18 @@ async function boot() {
   debugLog = !!st.debug; homeDir = st.home || ""; SANDBOX = st.sandbox || SANDBOX;
   setProvInfo(st.providers); if (list.length) renderList();       // the list may be here first: now with the symbols
   const logged = (st.providers || []).filter(p => p.logged_in);
-  if (!logged.length) return showLogin();
-  $("login").classList.remove("on");
-  const label = st.user?.name || st.user?.email || logged[0]?.name || "";
-  $("who").textContent = label.split(" ")[0];
-  userFirst = label.split(" ")[0];
-  $("av").textContent = (userFirst || "?").charAt(0).toUpperCase();
-  $("uemail").textContent = st.user?.email || logged.map(p => p.name).join(", ");
+  if (logged.length) $("login").classList.remove("on");
+  else showLogin();                                    // the start screen: what to chat with; the chats are there either way
+  userFirst = (st.user?.name || st.user?.email || "").split(" ")[0];     // a person's name only: no "Was steht an, Ollama?"
+  const who = userFirst || logged[0]?.name || "Nicht angemeldet";
+  $("who").textContent = who;
+  $("av").textContent = logged.length ? who.charAt(0).toUpperCase() : "?";
+  $("uemail").textContent = st.user?.email || logged.map(p => p.name).join(", ") || "Kein Anbieter angemeldet";
   await conns;
-  await models;
+  await models.catch(() => {});
   loadSearchProviders();                               // the prompt says whether web search can be switched on
-  if (!Object.keys(MODEL_META).length) return showLogin("Kein Modell verfügbar. Bitte einen Anbieter anmelden.");
   newChat(false);                                      // the chat list is on its way already
+  if (logged.length && !Object.keys(MODEL_META).length) showLogin("Kein Modell verfügbar. Bitte einen Anbieter anmelden.");
   setTimeout(checkUpdate, 4000);                       // not while the start itself is still busy
 }
 if (localStorage.workdir) { try { const k = "recentFolders"; const r = JSON.parse(localStorage[k] || "[]"); if (!r.includes(localStorage.workdir)) localStorage[k] = JSON.stringify([localStorage.workdir, ...r].slice(0, 8)); } catch {} }   // folders used before this feature existed
