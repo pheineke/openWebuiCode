@@ -1576,7 +1576,7 @@ async function renderProviders() {
       ${p.login ? `<button data-act="login" data-pid="${esc(p.id)}">${p.logged_in ? "Erneut anmelden" : "Anmelden"}</button>` : ""}
       ${p.logged_in ? `<button data-act="test" data-pid="${esc(p.id)}">Testen</button>` : ""}
       <span style="flex:1"></span>
-      ${p.logged_in ? `<button data-act="logout" data-pid="${esc(p.id)}">Abmelden</button>` : ""}
+      ${p.logged_in && (p.login || p.has_key) ? `<button data-act="logout" data-pid="${esc(p.id)}">${p.login ? "Abmelden" : "Schlüssel entfernen"}</button>` : ""}
       <button data-act="remove" data-pid="${esc(p.id)}" data-name="${esc(p.name || p.id)}" style="color:var(--danger)">Entfernen</button>
     </div></div>`).join("");
   const types = Object.entries(providerTypes);
@@ -1640,7 +1640,8 @@ async function providerAction(act, pid, name = "") {
       await loadModels(); renderProviders();
     } else if (act === "test") {
       const r = await api(`/app/providers/${encodeURIComponent(pid)}/test`, {method: "POST"});
-      notice(r.ok ? "Verbindung OK" : "Verbindung fehlgeschlagen", r.ok ? "" : r.error || "Unbekannter Fehler.");
+      notice(r.ok ? "Verbindung OK" : "Verbindung fehlgeschlagen",
+             r.ok ? (r.models != null ? `${r.models} Modelle gefunden.` : "") : r.error || "Unbekannter Fehler.");
     }
   } catch (e) { notice("Das hat nicht geklappt", errMsg(e)); }
 }
