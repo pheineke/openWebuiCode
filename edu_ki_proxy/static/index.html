@@ -1453,21 +1453,27 @@ function newChatIn(p) {
   else { chat.conn = p.conn || null; chat.workdir = p.workdir; addRecent(p.workdir); }
   resetPanel(); render(); $("input").focus();
 }
-// Chats kept by a provider (Open WebUI) carry its symbol at the right (Einstellungen → Anbieter → Symbol), or its
-// name when it has none or the picture does not load.
+// Each chat carries at the right the symbol of the provider whose model wrote most of its answers (Einstellungen →
+// Anbieter → Symbol; else the site's favicon), or its name when it has none or the picture does not load.
 let provInfo = {};                          // provider id -> its public record (from /app/status, /app/providers)
 const setProvInfo = list => { provInfo = Object.fromEntries((list || []).map(p => [p.id, p])); };
 const provIconUrl = pid => { const p = provInfo[pid]; return p && p.icon ? `/app/provider-icon/${enc(pid)}?v=${enc(p.icon)}` : ""; };
+// Open WebUI chats: the provider keeping them; local ones: that of their main model ("provider/model", chats.py)
+const mainProvider = c => { const pid = (c.main_model || "").split("/")[0]; return c.source === "local" && provInfo[pid] ? pid : c.provider; };
 const titling = new Set();                 // chat ids whose title a model is writing right now (shown faded)
 function chatItem(c) {
   const el = document.createElement("div");
   el.className = "chat" + (chat && chat.id === c.id ? " active" : "") + (c.pinned ? " pinned" : "") + (titling.has(c.id) ? " titling" : "");
   el.dataset.cid = c.id; el.dataset.src = c.source || "";
-  const icon = c.source !== "local" && provIconUrl(c.provider), name = c.provider_name || (provInfo[c.provider] || {}).name || "";
-  const nameTag = name ? `<small class="d">${esc(name)}</small>` : "";
-  const tag = c.source === "local" ? `<small class="d">lokal</small>` : icon && !badIcons.has(icon) ? "" : nameTag;
-  el.innerHTML = `<span>${esc(c.title || "Chat")}${tag}</span>`
-    + (tag || !icon ? "" : `<img class="pmark" src="${esc(icon)}" alt="" title="${esc(name)}">`)
+  const pid = mainProvider(c), icon = provIconUrl(pid);
+  const name = (provInfo[pid] || {}).name || (c.source === "local" ? "" : c.provider_name || "");
+  const model = (c.main_model || "").startsWith(pid + "/") ? c.main_model.slice(pid.length + 1) : "";
+  const tip = esc([name, model].filter(Boolean).join(" · "));
+  const label = name || (c.source === "local" ? "lokal" : "");             // a local chat whose provider is gone: "lokal"
+  const nameTag = label ? `<small class="d" title="${tip}">${esc(label)}</small>` : "";
+  const showIcon = icon && !badIcons.has(icon);
+  el.innerHTML = `<span>${esc(c.title || "Chat")}${showIcon ? "" : nameTag}</span>`
+    + (showIcon ? `<img class="pmark" src="${esc(icon)}" alt="" title="${tip}">` : "")
     + (c.pinned ? `<i class="pinmark" title="Angepinnt">${PIN}</i>` : "")
     + `<button class="more" title="Anpinnen, umbenennen, löschen">${DOTS}</button>`;
   const img = el.querySelector("img.pmark");
@@ -1637,9 +1643,9 @@ async function renderProviders() {
   const rows = list.map(p => `<div class="ucard">
     <div class="uhead"><b>${esc(p.name)}</b><span class="umuted">${esc(providerTypeLabel(p.type))}${providerState(p)}</span></div>
     <p class="umuted" style="margin:6px 0;word-break:break-all">${esc(p.base_url || "")}${p.logged_in && p.user && (p.user.email || p.user.name) ? " · " + esc(p.user.email || p.user.name) : ""}</p>
-    ${p.logged_in && (providerTypes[p.type] || {}).history ? `<div class="pform"><label class="wide">Symbol in der Chatliste (Bildadresse)
+    ${p.logged_in ? `<div class="pform"><label class="wide">Symbol in der Chatliste (Bildadresse)
       <input data-icon="${esc(p.id)}" value="${esc(p.icon_url || "")}" placeholder="leer: das Symbol der Seite" spellcheck="false">
-      <small class="umuted" style="font-weight:400">Markiert die Chats dieses Anbieters in der Seitenleiste, z. B. mit dem Favicon deiner Hochschule (…/favicon.ico).</small></label></div>` : ""}
+      <small class="umuted" style="font-weight:400">Markiert in der Seitenleiste die Chats, deren Antworten vor allem von diesem Anbieter kommen, z. B. mit dem Favicon deiner Hochschule (…/favicon.ico). Ohne Symbol steht dort sein Name.</small></label></div>` : ""}
     ${p.logged_in && Array.isArray(p.emulate_tools) ? `<div class="pform"><label class="wide">Tools über den Prompt (Modell-IDs, Komma-getrennt)
       <input data-emu="${esc(p.id)}" value="${esc(p.emulate_tools.join(", "))}" placeholder="z. B. claude-sonnet-5-rptu" spellcheck="false">
       <small class="umuted" style="font-weight:400">Für Modelle, die keine Tool-Aufrufe bekommen: Die Tools werden im Prompt beschrieben und die Antwort ausgewertet.</small></label></div>` : ""}

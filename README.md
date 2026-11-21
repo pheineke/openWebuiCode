@@ -164,8 +164,9 @@ Anmeldebildschirm; Hochschule und Benutzername sind dann schon eingetragen. Abme
   (nur den Text der Dateien, nicht die Originale). Skills aus Open WebUI lassen sich dort nur ansehen.
 - Oben rechts: **Terminal** und **Dateien** (Code mit Syntaxfarben, bei HTML per Auge-Symbol Vorschau).
 - **Seitenleiste**: oben **Projekte** und **Skills** nebeneinander, darunter **Neuer Chat**. Die Lupe über der
-  Chatliste durchsucht die Chats (**Strg+K**). Chats eines Open-WebUI-Anbieters tragen rechts sein Symbol
-  (Einstellungen → Anbieter → **Symbol in der Chatliste**, z. B. das Favicon der Hochschule; sonst das der Seite).
+  Chatliste durchsucht die Chats (**Strg+K**). Jeder Chat trägt rechts das Symbol des Anbieters, dessen
+  Modell die meisten Antworten geschrieben hat (Einstellungen → Anbieter → **Symbol in der Chatliste**, z. B. das
+  Favicon der Hochschule; sonst das der Seite, ohne eines der Name des Anbieters).
 - **Projekte** (Seitenleiste, über den Chats): **+ Neues Projekt** legt ein Projekt mit Namen an, ohne Ordner; Chats kommen über
   **+ Neuer Chat hier** oder ⋯ → **In Projekt verschieben** hinein. Dazu erscheinen die Arbeitsordner, in denen Chats
   laufen, von selbst als Projekte (ein Chat in einem benannten Projekt steht nur dort). Benannte Projekte lassen sich

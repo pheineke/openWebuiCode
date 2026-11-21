@@ -8,6 +8,7 @@ import os
 import re
 import secrets
 import time
+from collections import Counter
 from pathlib import Path
 
 from . import auth
@@ -160,6 +161,13 @@ def delete(cid: str) -> None:
         pass
 
 
+def _main_model(chat: dict) -> str | None:
+    """The model ("provider/model") that wrote most of a chat's answers: a chat may switch models on the way."""
+    msgs = ((chat.get("history") or {}).get("messages") or {}).values()
+    n = Counter(m["model"] for m in msgs if isinstance(m, dict) and m.get("role") == "assistant" and m.get("model"))
+    return n.most_common(1)[0][0] if n else chat.get("model")
+
+
 def list_all() -> list[dict]:
     out = []
     for f in _dir().glob("*.json"):
@@ -168,7 +176,7 @@ def list_all() -> list[dict]:
         except (OSError, ValueError):
             continue
         out.append({"id": c.get("id") or f.stem, "title": c.get("title") or "Chat",
-                    "updated_at": c.get("updated_at") or 0, "model": c.get("model"),
+                    "updated_at": c.get("updated_at") or 0, "model": c.get("model"), "main_model": _main_model(c),
                     "provider": c.get("provider"), "source": "local", "pinned": bool(c.get("pinned")),
                     "workdir": c.get("workdir") or None, "conn": c.get("conn") or None, "project": c.get("project") or None})
     out.sort(key=lambda c: c["updated_at"], reverse=True)

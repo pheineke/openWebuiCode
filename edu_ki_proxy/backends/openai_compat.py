@@ -1,5 +1,6 @@
 """Any OpenAI-compatible HTTP API: OpenAI, OpenRouter, Ollama, LM Studio, Gemini, ..."""
 import re
+from urllib.parse import urlparse
 
 import httpx
 
@@ -47,6 +48,14 @@ class OpenAICompat(Backend):
 
     def public(self, p: dict) -> dict:
         return {"models": p.get("models") or [], "has_key": bool(p.get("api_key"))}
+
+    def default_icon(self, p: dict) -> str:
+        """The site's favicon; for api.example.com that of example.com, where the site is (OpenRouter's is at
+        openrouter.ai). Local servers (LM Studio, Ollama) have none: their chats show the provider's name."""
+        u = urlparse(p.get("base_url") or "")
+        if not u.hostname:
+            return ""
+        return f"{u.scheme}://{u.hostname.removeprefix('api.')}{f':{u.port}' if u.port else ''}/favicon.ico"
 
     def _model_urls(self, p: dict) -> list[str]:
         """Where the model list may be: below the base URL, or below /v1 when the base URL has no version."""
