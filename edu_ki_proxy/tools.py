@@ -154,12 +154,12 @@ def grep(root, pattern, path=".", include=None):
     return "\n".join(out) or "no matches"
 
 
-async def bash(root, command, timeout=120, network=False):
-    """``network`` comes from the chat's setting, never from the model's arguments (see run())."""
+async def bash(root, command, timeout=120, network=False, box=True):
+    """``network`` and ``box`` come from the chat's settings, never from the model's arguments (see run())."""
     timeout = min(max(int(timeout), 1), 600)
-    boxed = sandbox.available()
+    boxed = box and sandbox.available()
     if network and boxed and not sandbox.network_available():
-        raise ToolError("network access is switched on, but pasta (package passt) is not installed")
+        raise ToolError(f"network access is switched on, but it does not work here: {sandbox.problem(True)}")
     argv = sandbox.argv(root, ["bash", "-c", command], network) if boxed else ["bash", "-c", command]
     git_before = sandbox.git_id(root)
     try:
@@ -231,9 +231,10 @@ def ls(workdir: str, path: str = ".") -> list[dict]:
 
 
 async def run(workdir: str, name: str, args: dict, conn: dict | None = None,
-              network: bool = False) -> tuple[str, dict | None]:
+              network: bool = False, box: bool = True) -> tuple[str, dict | None]:
     """Returns (output text for the model, optional metadata for the UI). `conn` = SSH connection: run there.
-    `network`: the chat allows network access for sandboxed commands."""
+    `network`: the chat allows network access for sandboxed commands; `box`: false where the person switched the
+    sandbox off (the page then asks before every command)."""
     if conn:
         from . import remote
         return await remote.run_tool(conn, workdir, name, args)
@@ -242,7 +243,7 @@ async def run(workdir: str, name: str, args: dict, conn: dict | None = None,
         if name == "bash":
             if extra := set(args) - {"command", "timeout"}:     # e.g. "network": that is the person's choice
                 raise ToolError(f"bad arguments for bash: {', '.join(sorted(extra))}")
-            return await bash(root, **args, network=network), None
+            return await bash(root, **args, network=network, box=box), None
         if name in SYNC:
             res = await asyncio.to_thread(SYNC[name], root, **args)
             text, meta = res if isinstance(res, tuple) else (res, None)

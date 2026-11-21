@@ -34,7 +34,7 @@ from .backends import ProxyError, emulate, openwebui
 
 def _sandbox_info() -> dict:
     """What this computer can do for the model's shell commands (the checks run once)."""
-    return {"local": sandbox.available(), "net": sandbox.network_available()}
+    return sandbox.status()
 
 
 @asynccontextmanager
@@ -886,13 +886,14 @@ class ToolReq(BaseModel):
     args: dict = {}
     conn: str | None = None
     net: bool = False             # the chat allows network access for sandboxed commands
+    box: bool = True              # the chat keeps commands in the sandbox (the person can switch it off)
 
 
 @app.post("/app/tool")
 async def run_tool(req: ToolReq):
     t0 = time.monotonic()
     try:
-        output, meta = await tools.run(req.workdir, req.name, req.args, _conn(req.conn), network=req.net)
+        output, meta = await tools.run(req.workdir, req.name, req.args, _conn(req.conn), network=req.net, box=req.box)
         trace.log("tool", name=req.name, args=req.args, output=output, t=round(time.monotonic() - t0, 1), cap=600)
         return {"output": output, "is_error": False, "meta": meta}
     except tools.ToolError as e:

@@ -36,8 +36,10 @@ Nach der Freigabe steht die Änderung als Zeile im Chat (`+53 −0` = hinzugefü
   (dafür `chromium`/`google-chrome` oder `.venv/bin/playwright install chromium`) und schreibt in die Konsole,
   was fehlt.
 - Für die [Abschottung](#abschottung) der Befehle des Modells: `bubblewrap`, für Internet darin `passt`.
-  Fedora: beide installiert; Debian/Ubuntu: `sudo apt install bubblewrap passt`; Arch: `sudo pacman -S bubblewrap passt`.
-  Ohne bubblewrap laufen Befehle nicht abgeschottet, und die App fragt vor jedem einzelnen.
+  Fedora: beide installiert; Debian/Ubuntu: `sudo apt install bubblewrap passt`; Arch: `sudo pacman -S bubblewrap passt`;
+  NixOS: `bubblewrap` und `passt` in `environment.systemPackages`.
+  Ohne bubblewrap laufen Befehle nicht abgeschottet, und die App fragt vor jedem einzelnen. Dasselbe, wenn
+  bubblewrap zwar da ist, aber hier nicht startet; warum, steht dann im Menü neben „Auto“.
 
 ## Einrichten
 
@@ -114,7 +116,8 @@ Anmeldebildschirm; Hochschule und Benutzername sind dann schon eingetragen. Abme
 - **Ordner** (unter dem Eingabefeld, links): Arbeitsordner wählen; im Auswahlfenster legt **Neuer Ordner**
   einen an. Dann darf das Modell dort lesen, ändern und Befehle ausführen, [abgeschottet](#abschottung) im Ordner
   (Schild im Ordner-Chip; rot: nicht abgeschottet). Schreiben und Befehle fragen nach, außer du stellst rechts neben
-  dem Modell „Auto“ ein. Im selben Menü: **Internet für Befehle** (pro Chat, aus), z. B. für `pip install`.
+  dem Modell „Auto“ ein. Im selben Menü, pro Chat: **Abschottung** (an; aus heißt: Befehle laufen mit deinen
+  Rechten, jeder wird einzeln bestätigt) und **Internet für Befehle** (aus), z. B. für `pip install`.
 - **Unter jeder Nachricht** (beim Darüberfahren): Kopieren; bei deinen Nachrichten **Bearbeiten**, bei Antworten
   **Neu generieren** mit dem gerade gewählten Modell. Beides legt eine neue Version an, mit ‹ › wechselst du
   zwischen den Versionen. **Ab hier neuer Chat** setzt das Gespräch bis zu dieser Nachricht in einem neuen Chat
@@ -331,11 +334,15 @@ läuft jeder Befehl des Modells (`bash`) lokal in [bubblewrap](https://github.co
   Einstellungen außer Name, E-Mail, Remotes und Branches.
 - **Umgebung und Prozesse:** keine Umgebungsvariablen der App (kein ssh-agent, D-Bus, Schlüsselbund oder Bildschirm),
   nicht der Name und die Machine-ID deines Rechners; alles, was ein Befehl startet, endet mit ihm.
+- **Nix:** Programme aus `/nix/store` (auch aus einer `nix develop`-Shell, in der die App gestartet wurde) laufen,
+  der Nix-Daemon ist aber nicht erreichbar: Er baut außerhalb der Abschottung, auch mit Netz, und wer in
+  `trusted-users` steht, hat über ihn praktisch root-Rechte. Also kein `nix-shell -p …` in abgeschotteten Befehlen.
 - **Netz:** aus. Mit **Internet für Befehle** (pro Chat) geht es über `pasta` ins Internet, aber nicht zu deinem
   Rechner selbst, also auch nicht zu dieser App. Dein Heimnetz und VPNs (z. B. Tailscale) sind dann erreichbar.
 
-Nicht abgeschottet sind Befehle auf SSH-Servern und auf Rechnern ohne bubblewrap: Dort fragt die App vor
-jedem einzelnen, auch bei „Auto“. Was die Abschottung nicht abdeckt: Dateien im Ordner sieht der Anbieter des
+Nicht abgeschottet sind Befehle auf SSH-Servern, auf Rechnern ohne bubblewrap oder wo es nicht startet, und in
+Chats, in denen du die **Abschottung** ausschaltest (z. B. für `nix-shell -p …`): Dort fragt die App vor jedem
+einzelnen, auch bei „Auto“. Was die Abschottung nicht abdeckt: Dateien im Ordner sieht der Anbieter des
 Modells; Code, den das Modell schreibt und den du später selbst startest (`npm run …`, ein Makefile), läuft mit
 deinen Rechten. Wählst du dein ganzes Home-Verzeichnis als Arbeitsordner, ist auch alles darin freigegeben.
 

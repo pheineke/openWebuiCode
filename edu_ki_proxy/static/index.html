@@ -1898,7 +1898,7 @@ function newChat(reload = true) {
   editId = null;
   const model = $("model").value || Object.keys(MODEL_META)[0] || "";
   chat = {id: null, title: "Neuer Chat", model, provider: modelProvider(model), source: modelIsOW(model) ? "openwebui" : "local",
-          conn: null, workdir: localStorage.workdir || null, perm: "ask", skills: [], webSearch: false, cards: cardPref(), net: false,
+          conn: null, workdir: localStorage.workdir || null, perm: "ask", skills: [], webSearch: false, cards: cardPref(), net: false, sandboxOff: false,
           history: {messages: {}, currentId: null}, updated_at: 0};
   resetPanel(); render(); if (reload) loadList();
 }
@@ -1920,7 +1920,7 @@ async function openChat(id, provider, source) {
   const model = loadedModel(c, provider);
   chat = {id, title: c.title || "Chat", conn: savedConn, workdir: h.conn && !savedConn ? null : (h.workdir || null), perm: "ask", model,
           provider: c.provider || provider || modelProvider(model), source: c.source || source || (modelIsOW(model) ? "openwebui" : "local"),
-          skills: Array.isArray(h.skills) ? h.skills : [], webSearch: !!h.webSearch, cards: h.cards === undefined ? cardPref() : !!h.cards, net: !!h.net,
+          skills: Array.isArray(h.skills) ? h.skills : [], webSearch: !!h.webSearch, cards: h.cards === undefined ? cardPref() : !!h.cards, net: !!h.net, sandboxOff: !!h.sandboxOff,
           history: h.history || {messages: {}, currentId: null}, updated_at: c.updated_at, raw: h};
   if ([...$("model").options].some(o => o.value === chat.model)) $("model").value = chat.model;
   addRecent(chat.workdir); resetPanel(); render();
@@ -2426,7 +2426,7 @@ function forkAt(m) {
   editId = null;
   chat = {id: null, title: `${old.title || "Chat"} – Abzweig`, model: old.model, provider: modelProvider(old.model),
           source: modelIsOW(old.model) ? "openwebui" : "local", conn: old.conn, workdir: old.workdir, perm: old.perm,
-          skills: [...(old.skills || [])], webSearch: !!old.webSearch, cards: !!old.cards, net: !!old.net, project: old.project || null, updated_at: 0,
+          skills: [...(old.skills || [])], webSearch: !!old.webSearch, cards: !!old.cards, net: !!old.net, sandboxOff: !!old.sandboxOff, project: old.project || null, updated_at: 0,
           history: {messages: Object.fromEntries(path.map(x => [x.id, x])), currentId: path.length ? path[path.length - 1].id : null}};
   if (m.role === "user") {
     $("input").value = m.content || ""; $("input").oninput();
@@ -2615,10 +2615,11 @@ function bindDropdown(sel, btn, menu, describe, icon) {
     sel.value = it.dataset.v; sel.dispatchEvent(new Event("change")); sel.refreshLabel(); menu.classList.remove("on");
   };
 }
-// The model's commands run in a sandbox around the folder (server: sandbox.py) when this computer has bubblewrap;
-// not on SSH hosts. Unsandboxed commands are confirmed one by one, also in Auto mode.
-let SANDBOX = {local: false, net: false};     // from /app/status
-const boxed = () => !!(chat && chat.workdir && !chat.conn && SANDBOX.local);
+// The model's commands run in a sandbox around the folder (server: sandbox.py) when this computer has bubblewrap
+// and it starts here; not on SSH hosts, nor in chats where the person switched it off. Unsandboxed commands are
+// confirmed one by one, also in Auto mode.
+let SANDBOX = {local: false, net: false};     // from /app/status; when bubblewrap does not start, also what it said
+const boxed = () => !!(chat && chat.workdir && !chat.conn && SANDBOX.local && !chat.sandboxOff);
 const SHIELD_OK = '<svg viewBox="0 0 24 24"><path d="M12 3l7 3v5.5c0 4.2-2.9 7.8-7 9.5-4.1-1.7-7-5.3-7-9.5V6z"/><path d="M9 12l2.2 2.2L15 10.4"/></svg>';
 const SHIELD_NO = '<svg viewBox="0 0 24 24"><path d="M12 3l7 3v5.5c0 4.2-2.9 7.8-7 9.5-4.1-1.7-7-5.3-7-9.5V6z"/><path d="M12 8v4.5M12 16h.01"/></svg>';
 const PERM_ICON = {
@@ -2628,7 +2629,8 @@ const PERM_ICON = {
 bindDropdown($("perm"), $("permBtn"), $("permMenu"), v => ({ask: "Vor Änderungen und Befehlen fragen",
   auto: boxed() ? "Ohne Rückfrage; Befehle bleiben abgeschottet im Ordner" : "Dateien ohne Rückfrage; Befehle fragen trotzdem (nicht abgeschottet)"})[v],
   v => PERM_ICON[v]);
-// Below the modes: network for the sandboxed commands (per chat, off by default), or why there is no sandbox.
+// Below the modes, per chat: the sandbox (on by default) and network for its commands (off by default), or why
+// there is no sandbox.
 const permOpen = $("permBtn").onclick, permPick = $("permMenu").onclick;
 $("permBtn").onclick = () => {
   permOpen();
@@ -2639,15 +2641,30 @@ $("permBtn").onclick = () => {
 $("permMenu").onclick = e => {
   const n = e.target.closest("[data-net]");
   if (n) return toggleNet(n);
+  if (e.target.closest("[data-box]")) return toggleBox();
   if (e.target.closest(".item[data-v]")) permPick(e);
 };
 function sandboxRowHtml() {
-  if (!boxed()) return `<div class="item off warn"><span class="mrow"><i class="mi">${SHIELD_NO}</i><span>Nicht abgeschottet`
-    + `<small class="d">${chat.conn ? "Auf SSH-Rechnern" : "Ohne bubblewrap"} laufen Befehle des Modells mit deinen Rechten. Jeder wird einzeln bestätigt, auch bei Auto.</small></span></span></div>`;
+  if (chat.conn || !SANDBOX.local) return `<div class="item off warn"><span class="mrow"><i class="mi">${SHIELD_NO}</i><span>Nicht abgeschottet`
+    + `<small class="d">${chat.conn ? "Auf SSH-Rechnern laufen" : SANDBOX.bwrap ? `bubblewrap startet hier nicht (${esc(SANDBOX.error || "")}), darum laufen`
+      : "Ohne bubblewrap laufen"} Befehle des Modells mit deinen Rechten. Jeder wird einzeln bestätigt, auch bei Auto.</small></span></span></div>`;
+  const off = !!chat.sandboxOff;
+  const box = `<div class="item${off ? " warn" : ""}" data-box><span class="mrow"><i class="mi">${off ? SHIELD_NO : SHIELD_OK}</i><span>Abschottung`
+    + `<small class="d">${off ? "Aus: Befehle laufen mit deinen Rechten, auch außerhalb des Ordners. Jeder wird einzeln bestätigt, auch bei Auto."
+      : "Befehle sehen nur diesen Ordner, nicht deine übrigen Dateien und Schlüssel."}</small></span></span>`
+    + `<span class="switch${off ? "" : " on"}" role="switch" aria-checked="${!off}"></span></div>`;
+  if (off) return box;                               // without the sandbox, commands have the whole network anyway
   const can = SANDBOX.net, on = can && !!chat.net;
-  return `<div class="item${can ? "" : " off"}" data-net><span class="mrow"><i class="mi">${GLOBE}</i><span>Internet für Befehle`
-    + `<small class="d">${can ? "Für pip, npm oder git clone. Dein Rechner selbst (auch diese App) bleibt unerreichbar." : "Braucht das Paket passt (pasta)."}</small></span></span>`
+  return box + `<div class="item${can ? "" : " off"}" data-net><span class="mrow"><i class="mi">${GLOBE}</i><span>Internet für Befehle`
+    + `<small class="d">${can ? "Für pip, npm oder git clone. Dein Rechner selbst (auch diese App) bleibt unerreichbar."
+      : SANDBOX.netError ? `Startet hier nicht: ${esc(SANDBOX.netError)}` : "Braucht das Paket passt (pasta)."}</small></span></span>`
     + `<span class="switch${on ? " on" : ""}" role="switch" aria-checked="${on}"></span></div>`;
+}
+function toggleBox() {
+  chat.sandboxOff = !chat.sandboxOff;
+  if (chat.id) save().catch(() => {});
+  render();                                                         // the shield on the folder, an approval's buttons
+  $("permMenu").classList.remove("on"); $("permBtn").onclick();     // the menu anew: "Auto" and the rows below change
 }
 function toggleNet(row) {
   if (row.classList.contains("off")) return;
@@ -3340,7 +3357,7 @@ function toOpenWebUI() {
   const msgs = chat.history.messages;
   const flat = Object.values(msgs).sort((a, b) => a.timestamp - b.timestamp);
   return {id: chat.id || "", title: chat.title, models: [modelName(chat.model)], params: {}, app_model: chat.model,
-          history: chat.history, workdir: chat.workdir, conn: chat.conn, skills: chat.skills || [], webSearch: !!chat.webSearch, cards: !!chat.cards, net: !!chat.net, project: chat.project || null, messages: flat, tags: [], files: [], timestamp: Date.now()};
+          history: chat.history, workdir: chat.workdir, conn: chat.conn, skills: chat.skills || [], webSearch: !!chat.webSearch, cards: !!chat.cards, net: !!chat.net, sandboxOff: !!chat.sandboxOff, project: chat.project || null, messages: flat, tags: [], files: [], timestamp: Date.now()};
 }
 async function save() {
   // A chat stays where it was first saved (Open WebUI or this computer), also when a model of another
@@ -3349,7 +3366,7 @@ async function save() {
   if (chat.source !== "openwebui") {
     const r = await api("/app/chats", json("POST", {id: chat.id || "", title: chat.title, model: chat.model,
       provider: chat.provider, history: chat.history, workdir: chat.workdir, conn: chat.conn, skills: chat.skills || [], webSearch: !!chat.webSearch, cards: !!chat.cards, net: !!chat.net,
-      project: chat.project || null}));
+      sandboxOff: !!chat.sandboxOff, project: chat.project || null}));
     chat.id = r.id; chat.updated_at = r.updated_at;
     return;
   }
@@ -3473,7 +3490,7 @@ async function runCall(c, ctrl, a) {
   }
   c.status = "running"; render();
   const r = await (await fetch("/app/tool", {...json("POST", {workdir: chat.workdir, name: c.name, args, conn: chat.conn,
-    net: boxed() && !!chat.net}), signal: ctrl.signal})).json();
+    net: boxed() && !!chat.net, box: boxed()}), signal: ctrl.signal})).json();
   c.result = r.output; c.status = r.is_error ? "error" : "done"; c.meta = r.meta || undefined;
   if (!r.is_error && (c.name === "write_file" || c.name === "edit_file")) refreshTab(norm(args.path || ""));
 }
