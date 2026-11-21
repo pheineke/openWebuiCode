@@ -40,6 +40,7 @@ Nach der Freigabe steht die Änderung als Zeile im Chat (`+53 −0` = hinzugefü
   NixOS: `bubblewrap` und `passt` in `environment.systemPackages`.
   Ohne bubblewrap laufen Befehle nicht abgeschottet, und die App fragt vor jedem einzelnen. Dasselbe, wenn
   bubblewrap zwar da ist, aber hier nicht startet; warum, steht dann im Menü neben „Auto“.
+- Für den eingebauten Browser ([MCP-Werkzeug](#benutzen) Playwright): Node.js mit `npx`.
 
 ## Einrichten
 
@@ -138,6 +139,17 @@ Anmeldebildschirm; Hochschule und Benutzername sind dann schon eingetragen. Abme
   Antwort, die Suchen als Karte darüber. Geht mit jedem Modell, das Werkzeuge nutzt (auch über den Prompt),
   braucht aber einen angemeldeten Open-WebUI-Anbieter mit Websuche. Beim ersten Einschalten zeigt die App den
   Datenschutzhinweis des Anbieters. Ist sie aus, weiß das Modell das und verweist auf den Schalter.
+- **MCP-Werkzeuge**: Unter **+** → **MCP-Werkzeuge** schaltest du pro Chat Server nach dem Model Context Protocol
+  ein (Chip über dem Eingabefeld); ihre Werkzeuge bekommt das Modell zusätzlich, auch ohne Arbeitsordner.
+  Eingebaut ist **Playwright**, ein Browser ohne Fenster: Seiten öffnen, lesen, klicken, Formulare ausfüllen. Er
+  braucht Node.js (`npx`; beim ersten Start lädt er `@playwright/mcp`) und nimmt dein Chromium/Chrome, sonst das
+  von `.venv/bin/playwright install chromium`; jeder Start beginnt mit leerem Profil, ohne deine Anmeldungen.
+  Eigene Server unter **Einstellungen → MCP-Server**: ein Programm (z. B. `npx -y …`, `uvx …`) mit
+  Umgebungsvariablen oder eine Adresse (Streamable HTTP) mit Headern wie `Authorization: Bearer …`.
+  Programme laufen [abgeschottet](#abschottung) in einem eigenen Ordner, mit Internet, aber ohne deine Dateien und
+  ohne Zugang zu deinem Rechner; dann laufen ihre Aufrufe bei „Auto“ ohne Rückfrage. Braucht ein Server Dateien
+  oder Programme außerhalb, schalte bei ihm die **Abschottung** aus: Dann wird jeder Aufruf bestätigt, auch bei
+  „Auto“. Server mit Adresse laufen beim Anbieter; ihre Aufrufe folgen dem Modus des Chats.
 - **Infokarten**: Unter **+** (standardmäßig an, die Wahl gilt pro Chat und als Vorgabe für neue). Das Modell kann
   dann Übersichten, Vergleiche, Zeitleisten oder einfache Diagramme als Karte aus HTML und CSS zeigen; im Text ist
   das ein Codeblock mit der Sprache `card`. Die Karte läuft abgeschottet: ohne JavaScript, ohne Formulare und ohne
@@ -288,7 +300,8 @@ stille Neuanmeldung, nie das Passwort), lokale Chats (`chats/`), die Browserprof
 Chromium-Login (`browser-profile-<id>/`), die Fenster-Daten mit Einstellungen und das Nutzungsprotokoll.
 `state.json` stammt von älteren Versionen und wird nur beim ersten Start übernommen. `sandbox-home/` enthält je
 Arbeitsordner das Home-Verzeichnis, das Befehle des Modells in der Abschottung sehen (Caches von pip, npm usw.);
-löschen ist harmlos. Der Menü-Eintrag von `install.sh` liegt in
+löschen ist harmlos. `mcp.json` (nur für dich lesbar) hält die MCP-Server mit ihren Schlüsseln, `mcp/<id>/` ist
+der Ordner jedes Servers (Playwright legt dort Seiten-Snapshots und Screenshots ab). Der Menü-Eintrag von `install.sh` liegt in
 `~/.local/share/applications/de.edu_ki_rlp.code.desktop`, sein Symbol unter `~/.local/share/icons/hicolor/`.
 Anmeldedaten löschen: in der App abmelden (entfernt auch die Cookies und gespeicherten Sitzungen der Anbieter
 im Fenster; nur Dateien zu löschen reicht nicht, die Hochschule könnte dich sonst ohne Passwort wieder anmelden).
@@ -342,7 +355,10 @@ läuft jeder Befehl des Modells (`bash`) lokal in [bubblewrap](https://github.co
 
 Nicht abgeschottet sind Befehle auf SSH-Servern, auf Rechnern ohne bubblewrap oder wo es nicht startet, und in
 Chats, in denen du die **Abschottung** ausschaltest (z. B. für `nix-shell -p …`): Dort fragt die App vor jedem
-einzelnen, auch bei „Auto“. Was die Abschottung nicht abdeckt: Dateien im Ordner sieht der Anbieter des
+einzelnen, auch bei „Auto“. Dasselbe gilt für MCP-Server: Ein Programm läuft abgeschottet wie ein Befehl, mit
+Internet über `pasta` und einem eigenen Ordner statt des Arbeitsordners; so erreicht auch der eingebaute Browser
+weder deine Dateien noch diese App. Geht das nicht (kein bubblewrap oder kein `passt`) oder ist die Abschottung
+beim Server aus, fragt die App vor jedem seiner Aufrufe. Was die Abschottung nicht abdeckt: Dateien im Ordner sieht der Anbieter des
 Modells; Code, den das Modell schreibt und den du später selbst startest (`npm run …`, ein Makefile), läuft mit
 deinen Rechten. Wählst du dein ganzes Home-Verzeichnis als Arbeitsordner, ist auch alles darin freigegeben.
 

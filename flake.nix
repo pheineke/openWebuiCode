@@ -35,13 +35,14 @@
           nativeBuildInputs = [ pkgs.wrapGAppsHook4 pkgs.gobject-introspection ];
           buildInputs = guiLibs pkgs;
           dontWrapGApps = true;
-          # Chromium for the fallback login and as fallback window, bubblewrap and pasta (passt) for the
-          # sandbox around the model's commands; appended to PATH, so ones the user already has come
-          # first. -P: never import modules from the current directory.
+          # Chromium for the fallback login, as fallback window and for the built-in browser (MCP), bubblewrap
+          # and pasta (passt) for the sandbox around the model's commands, Node.js (npx) for the MCP server
+          # Playwright; appended to PATH, so ones the user already has come first.
+          # -P: never import modules from the current directory.
           preFixup = ''
             wrap() {
               makeWrapper ${python}/bin/python3 $out/bin/$1 "''${gappsWrapperArgs[@]}" \
-                --suffix PATH : ${pkgs.lib.makeBinPath [ pkgs.chromium pkgs.bubblewrap pkgs.passt ]} --add-flags "-P -m $2"
+                --suffix PATH : ${pkgs.lib.makeBinPath [ pkgs.chromium pkgs.bubblewrap pkgs.passt pkgs.nodejs ]} --add-flags "-P -m $2"
             }
             wrap edu-ki-code "edu_ki_proxy app"
             wrap edu-ki-proxy "edu_ki_proxy"
@@ -67,7 +68,7 @@
       devShells = forAllSystems (pkgs: {
         default = pkgs.mkShell {
           inputsFrom = [ (app pkgs) ];
-          packages = [ (pkgs.python3.withPackages pyDeps) pkgs.chromium pkgs.bubblewrap pkgs.passt ];
+          packages = [ (pkgs.python3.withPackages pyDeps) pkgs.chromium pkgs.bubblewrap pkgs.passt pkgs.nodejs ];
           # wrapGAppsHook4 only puts these into the wrapper; the shell needs them set directly.
           shellHook = ''
             export XDG_DATA_DIRS="$GSETTINGS_SCHEMAS_PATH:''${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"

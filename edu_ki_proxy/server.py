@@ -28,7 +28,7 @@ from fastapi.staticfiles import StaticFiles
 
 from pydantic import BaseModel
 
-from . import auth, backends, chats, extract, providers, remote, sandbox, shibboleth, skills, tools, trace, updater, usage
+from . import auth, backends, chats, extract, mcp, providers, remote, sandbox, shibboleth, skills, tools, trace, updater, usage
 from .backends import ProxyError, emulate, openwebui
 
 
@@ -43,6 +43,7 @@ async def lifespan(_app):
     asyncio.get_running_loop().run_in_executor(None, _sandbox_info)   # checked before the first command needs it
     yield
     await openwebui.close_clients()
+    await mcp.close_all()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -878,6 +879,67 @@ def _conn(conn_id: str | None) -> dict | None:
     if not c:
         raise tools.ToolError("unknown SSH connection (it may have been removed)")
     return c
+
+
+@app.get("/app/mcp")
+async def mcp_list():
+    """The MCP servers (settings and state); the first look checks the sandbox, which takes a moment."""
+    return {"servers": await asyncio.to_thread(mcp.public)}
+
+
+@app.post("/app/mcp")
+async def mcp_add(req: dict):
+    try:
+        return {"server": await mcp.put(None, req)}
+    except ValueError as e:
+        raise ProxyError(str(e), 400) from e
+
+
+@app.put("/app/mcp/{sid}")
+async def mcp_change(sid: str, req: dict):
+    try:
+        return {"server": await mcp.put(sid, req)}
+    except ValueError as e:
+        raise ProxyError(str(e), 400) from e
+
+
+@app.delete("/app/mcp/{sid}")
+async def mcp_remove(sid: str):
+    try:
+        await mcp.remove(sid)
+    except ValueError as e:
+        raise ProxyError(str(e), 400) from e
+    return {"ok": True}
+
+
+@app.post("/app/mcp/{sid}/connect")
+async def mcp_connect(sid: str, restart: bool = False):
+    """Starts the server if it is not running (anew: ``restart``); its tools for the model, and whether each call
+    is asked for."""
+    try:
+        if restart:
+            await mcp.stop(sid)
+        return await mcp.tools(sid)
+    except mcp.McpError as e:
+        raise ProxyError(str(e), 502) from e
+
+
+class McpCallReq(BaseModel):
+    server: str
+    tool: str
+    args: dict = {}
+
+
+@app.post("/app/mcp/call")
+async def mcp_call(req: McpCallReq):
+    t0 = time.monotonic()
+    try:
+        output, is_error = await mcp.call(req.server, req.tool, req.args)
+    except mcp.McpError as e:
+        output, is_error = f"Error: {e}", True
+    trace.log("mcp", server=req.server, tool=req.tool, args=req.args, output=output, error=is_error,
+              t=round(time.monotonic() - t0, 1), cap=600)
+    return {"output": output, "is_error": is_error}
 
 
 class ToolReq(BaseModel):

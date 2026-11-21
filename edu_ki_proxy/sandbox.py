@@ -31,7 +31,8 @@ from . import auth
 HOME = Path.home()
 SYSTEM = ("/usr", "/etc", "/opt", "/nix", "/gnu")
 MERGED = ("bin", "sbin", "lib", "lib64", "lib32")              # usually symlinks into /usr
-TOOLCHAINS = (".local/bin", ".local/lib", ".cargo/bin", ".rustup", ".nvm", ".pyenv", ".volta", ".deno", ".bun", "go/bin")
+TOOLCHAINS = (".local/bin", ".local/lib", ".cargo/bin", ".rustup", ".nvm", ".pyenv", ".volta", ".deno", ".bun", "go/bin",
+              ".cache/ms-playwright")                           # Playwright's browsers (the MCP server's, too)
 DNS_IN = "169.254.1.53"                                         # the sandbox's nameserver, forwarded by pasta
 NIX_DAEMON = "/nix/var/nix/daemon-socket"                       # a socket is reachable on a read-only mount too
 
@@ -173,8 +174,9 @@ def _visible(p: str, mounted: list[Path]) -> str | None:
     return None
 
 
-def argv(root: Path, command: list[str], network: bool = False) -> list[str]:
-    """The command line that runs ``command`` in a sandbox around the (resolved) working folder ``root``."""
+def argv(root: Path, command: list[str], network: bool = False, env: dict[str, str] | None = None) -> list[str]:
+    """The command line that runs ``command`` in a sandbox around the (resolved) working folder ``root``.
+    ``env``: variables of its own (an MCP server's settings), on top of the few the sandbox has."""
     # --uid/--gid: the person's own ids inside, also under pasta (whose namespace makes them root)
     a = ["bwrap", "--unshare-all", *(["--share-net"] if network else []), "--die-with-parent", "--new-session",
          "--clearenv", "--uid", str(os.getuid()), "--gid", str(os.getgid())]
@@ -226,12 +228,12 @@ def argv(root: Path, command: list[str], network: bool = False) -> list[str]:
             path.append(str(HOME / t))
     path += [p for p in ("/usr/local/bin", "/usr/bin", "/bin") if p not in path]
     shell = "/bin/bash" if os.path.exists("/bin/bash") else shutil.which("bash", path=":".join(path)) or "/bin/sh"
-    env = {"HOME": str(HOME), "PATH": ":".join(path), "TERM": "dumb", "TMPDIR": "/tmp", "SHELL": shell,
+    setenv = {"HOME": str(HOME), "PATH": ":".join(path), "TERM": "dumb", "TMPDIR": "/tmp", "SHELL": shell,
            "USER": os.environ.get("USER", ""), "LOGNAME": os.environ.get("LOGNAME", ""),
            "LANG": os.environ.get("LANG") or "C.UTF-8",
            # NixOS: its glibc finds the locales only through this
-           "LOCALE_ARCHIVE": _visible(os.environ.get("LOCALE_ARCHIVE", ""), mounted)}
-    for k, v in env.items():
+           "LOCALE_ARCHIVE": _visible(os.environ.get("LOCALE_ARCHIVE", ""), mounted), **(env or {})}
+    for k, v in setenv.items():
         if v:
             a += ["--setenv", k, v]
     # bubblewrap's / is a writable in-memory folder: read-only too, once every mount point in it exists

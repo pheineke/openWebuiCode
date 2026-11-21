@@ -771,6 +771,10 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
 .pform select,.srow select{appearance:none;-webkit-appearance:none;padding-right:30px;cursor:pointer;background-repeat:no-repeat;background-size:5px 5px;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 16px) 55%,calc(100% - 11px) 55%}
 .pform select:focus{outline:none;border-color:var(--accent)}
 .pform .wide{grid-column:1/-1}
+/* MCP servers in the settings: their switches, the form's text areas, why one did not start */
+.pform textarea{font:13px/1.4 ui-monospace,monospace;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 10px;resize:vertical}
+.mtg{display:inline-flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-right:12px;align-self:center}
+.mcperr{white-space:pre-wrap;word-break:break-word;font-size:12px;color:var(--danger);background:var(--side);border-radius:8px;padding:8px 10px;margin:6px 0;max-height:160px;overflow:auto}
 .uhead.addhead{align-items:center;margin-bottom:0}            /* the add button in the title row, not below the form */
 #loginProviders button,.prow button{border:1px solid var(--line);background:var(--btn);color:var(--fg);padding:7px 12px;border-radius:8px;font:inherit;font-size:13px;cursor:pointer}
 #loginProviders button:hover,.prow button:hover{border-color:var(--accent)}
@@ -851,7 +855,7 @@ body.dragging iframe,body.dragging #tbody{pointer-events:none}
 </div>
 </div>
 <div class="overlay" id="settings"><div class="sbig">
-  <div class="snav"><h4>Einstellungen</h4><div class="act" data-page="appearance">Darstellung</div><div data-page="chats">Chats</div><div data-page="providers">Anbieter</div><div data-page="usage">Nutzung</div><div data-page="updates">Updates</div>
+  <div class="snav"><h4>Einstellungen</h4><div class="act" data-page="appearance">Darstellung</div><div data-page="chats">Chats</div><div data-page="providers">Anbieter</div><div data-page="mcp">MCP-Server</div><div data-page="usage">Nutzung</div><div data-page="updates">Updates</div>
     <div class="slogout" id="logout" title="Bei allen Anbietern abmelden">Abmelden</div></div>
   <div class="scont" id="scont"></div>
   <button class="sx" id="sclose" title="Schließen"><svg class="xm" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
@@ -1618,6 +1622,7 @@ function renderSettings() {
   document.querySelectorAll(".snav [data-page]").forEach(d => d.classList.toggle("act", d.dataset.page === settingsPage));
   if (settingsPage === "usage") renderUsage();
   else if (settingsPage === "providers") renderProviders();
+  else if (settingsPage === "mcp") renderMcpSettings();
   else if (settingsPage === "updates") renderUpdates();
   else if (settingsPage === "chats") renderChatSettings();
   else renderAppearance();
@@ -1686,6 +1691,98 @@ async function renderProviders() {
     try { await api("/app/providers", json("POST", body)); await loadModels(); renderProviders(); }
     catch (e) { notice("Anbieter nicht hinzugefügt", errMsg(e)); }
   };
+}
+// ---- settings → MCP-Server (server: mcp.py) ----
+let mcpEdit = null;                         // the server whose settings are in the form (null: the form adds one)
+const pairLines = (o, sep) => Object.entries(o || {}).map(([k, v]) => k + sep + v).join("\n");
+function parsePairs(text, sep, what) {      // "NAME=Wert" / "Name: Wert" lines into an object
+  const out = {};
+  for (const l of text.split("\n").map(x => x.trim()).filter(Boolean)) {
+    const i = l.indexOf(sep);
+    if (i < 1) throw new Error(`${what}: „${l}“ hat kein „${sep.trim()}“`);
+    out[l.slice(0, i).trim()] = l.slice(i + sep.length).trim();
+  }
+  return out;
+}
+async function renderMcpSettings() {
+  const box = $("scont");
+  if (mcpServers === null) box.innerHTML = '<h2>MCP-Server</h2><div class="pmsg">Lädt…</div>';
+  await loadMcp();
+  if (settingsPage !== "mcp" || !$("settings").classList.contains("on")) return;
+  const state = s => !s.enabled ? "aus" : s.state === "ready" ? `läuft · ${s.tools.length} Werkzeuge` : s.state === "error" ? "startet nicht" : "startet bei Bedarf";
+  const shield = s => s.transport === "http" ? "Läuft beim Anbieter; Aufrufe folgen dem Modus des Chats (Mit Rückfrage / Auto)."
+    : !s.unboxed ? "Abgeschottet: eigener Ordner und Internet, aber keine deiner Dateien und nichts auf deinem Rechner. Bei Auto ohne Rückfrage."
+    : s.sandbox ? "Nicht abgeschottet: Die Abschottung mit Internet (bubblewrap und pasta) startet hier nicht. Jeder Aufruf wird bestätigt."
+    : "Nicht abgeschottet: läuft mit deinen Rechten. Jeder Aufruf wird bestätigt, auch bei Auto.";
+  const sw = (s, k, label) => `<span class="mtg" data-mtg="${k}" data-id="${esc(s.id)}"><span class="switch${s[k] ? " on" : ""}" role="switch" aria-checked="${!!s[k]}"></span>${label}</span>`;
+  const rows = mcpServers.map(s => `<div class="ucard">
+    <div class="uhead"><b>${esc(s.name)}</b><span class="umuted">${s.builtin ? "eingebaut" : s.transport === "http" ? "Adresse" : "Programm"} · ${state(s)}</span></div>
+    <p class="umuted" style="margin:6px 0;word-break:break-all">${esc(s.builtin ? s.description : s.transport === "http" ? s.url : s.command)}</p>
+    <p class="umuted" style="margin:6px 0${s.unboxed ? ";color:var(--danger)" : ""}">${esc(shield(s))}</p>
+    ${s.enabled && s.state === "error" && s.error ? `<pre class="mcperr">${esc(s.error)}</pre>` : ""}
+    ${s.state === "ready" && s.tools ? `<p class="umuted" style="margin:6px 0">${esc(s.tools.join(", "))}</p>` : ""}
+    <div class="prow" style="justify-content:flex-start;margin-top:10px">${sw(s, "enabled", "Aktiv")}${s.transport === "stdio" ? sw(s, "sandbox", "Abschottung") : ""}
+      <span style="flex:1"></span>
+      ${s.enabled ? `<button data-mact="test" data-id="${esc(s.id)}">${s.state === "ready" ? "Neu starten" : "Verbinden"}</button>` : ""}
+      ${s.builtin ? "" : `<button data-mact="edit" data-id="${esc(s.id)}">Bearbeiten</button>
+        <button data-mact="remove" data-id="${esc(s.id)}" style="color:var(--danger)">Entfernen</button>`}
+    </div></div>`).join("");
+  const e = mcpEdit && mcpServer(mcpEdit) || null;
+  if (!e) mcpEdit = null;
+  box.innerHTML = `<h2>MCP-Server</h2>
+    <p class="umuted" style="margin:0 0 16px">Weitere Werkzeuge für das Modell, über das Model Context Protocol. Pro Chat einschalten im „+“-Menü unter <b>MCP-Werkzeuge</b>.</p>${rows}
+    <div class="ucard" id="mcpForm"><div class="uhead addhead"><b>${e ? `„${esc(e.name)}“ bearbeiten` : "Server hinzufügen"}</b><span class="prow">
+      ${e ? '<button id="mCancel">Abbrechen</button>' : ""}<button class="ok" id="mSave">${e ? "Speichern" : "Hinzufügen"}</button></span></div>
+      <div class="pform">
+        <label>Name<input id="mName" value="${esc(e ? e.name : "")}" placeholder="z. B. GitHub"></label>
+        <label>Art<select id="mType"><option value="stdio">Programm (stdio)</option><option value="http">Adresse (HTTP)</option></select></label>
+        <label data-mf="stdio" class="wide">Befehl<input id="mCmd" value="${esc(e ? e.command : "")}" placeholder="npx -y @modelcontextprotocol/server-everything" spellcheck="false"></label>
+        <label data-mf="stdio" class="wide">Umgebungsvariablen (eine pro Zeile: NAME=Wert)<textarea id="mEnv" rows="2" spellcheck="false">${esc(e ? pairLines(e.env, "=") : "")}</textarea></label>
+        <label data-mf="http" class="wide">Adresse<input id="mUrl" value="${esc(e ? e.url : "")}" placeholder="https://…/mcp" spellcheck="false"></label>
+        <label data-mf="http" class="wide">Header (einer pro Zeile: Name: Wert)<textarea id="mHead" rows="2" spellcheck="false" placeholder="Authorization: Bearer …">${esc(e ? pairLines(e.headers, ": ") : "")}</textarea></label>
+        <p class="umuted wide" style="margin:0">Programme laufen abgeschottet in einem eigenen Ordner, mit Internet. Braucht ein Server deine Dateien
+          oder Programme außerhalb, schalte bei ihm die Abschottung aus: Dann wird jeder Aufruf bestätigt.</p>
+      </div></div>`;
+  $("mType").value = e ? e.transport : "stdio";
+  const setType = () => box.querySelectorAll("label[data-mf]").forEach(l => l.style.display = l.dataset.mf === $("mType").value ? "" : "none");
+  $("mType").onchange = setType; setType();
+  box.querySelectorAll("[data-mtg]").forEach(t => t.onclick = () => mcpSet(t.dataset.id, {[t.dataset.mtg]: !mcpServer(t.dataset.id)[t.dataset.mtg]}));
+  box.querySelectorAll("button[data-mact]").forEach(b => b.onclick = () => mcpAction(b.dataset.mact, b.dataset.id, b));
+  if ($("mCancel")) $("mCancel").onclick = () => { mcpEdit = null; renderMcpSettings(); };
+  $("mSave").onclick = async () => {
+    let body;
+    try {
+      body = {name: $("mName").value, transport: $("mType").value};
+      if (body.transport === "stdio") Object.assign(body, {command: $("mCmd").value.trim(), env: parsePairs($("mEnv").value, "=", "Umgebungsvariablen")});
+      else Object.assign(body, {url: $("mUrl").value.trim(), headers: parsePairs($("mHead").value, ": ", "Header")});
+    } catch (err) { return notice("Nicht gespeichert", err.message); }
+    try {
+      await api(e ? `/app/mcp/${encodeURIComponent(e.id)}` : "/app/mcp", json(e ? "PUT" : "POST", body));
+      if (e) delete mcpLive[e.id];
+      mcpEdit = null; renderMcpSettings();
+    } catch (err) { notice("Nicht gespeichert", errMsg(err)); }
+  };
+}
+async function mcpSet(id, patch) {
+  try { await api(`/app/mcp/${encodeURIComponent(id)}`, json("PUT", patch)); delete mcpLive[id]; }
+  catch (e) { notice("Speichern fehlgeschlagen", errMsg(e)); }
+  renderMcpSettings();
+}
+async function mcpAction(act, id, btn) {
+  const s = mcpServer(id); if (!s) return;
+  if (act === "edit") { mcpEdit = id; await renderMcpSettings(); $("mcpForm").scrollIntoView({behavior: "smooth", block: "nearest"}); return; }
+  if (act === "remove") {
+    if (!await dialog({title: "MCP-Server entfernen?", text: `„${s.name}“ wird entfernt; Chats, in denen er an ist, haben seine Werkzeuge dann nicht mehr.`,
+                       ok: "Entfernen", danger: true})) return;
+    try { await api(`/app/mcp/${encodeURIComponent(id)}`, {method: "DELETE"}); } catch (e) { return notice("Entfernen fehlgeschlagen", errMsg(e)); }
+    delete mcpLive[id]; if (mcpEdit === id) mcpEdit = null;
+    return renderMcpSettings();
+  }
+  if (act === "test") {                     // the card shows what came of it: its tools, or why it did not start
+    btn.disabled = true; btn.textContent = "Startet…";
+    try { await mcpStart(id, s.state === "ready"); } catch {}
+    renderMcpSettings();
+  }
 }
 async function providerAction(act, pid, name = "") {
   try {
@@ -1898,7 +1995,7 @@ function newChat(reload = true) {
   editId = null;
   const model = $("model").value || Object.keys(MODEL_META)[0] || "";
   chat = {id: null, title: "Neuer Chat", model, provider: modelProvider(model), source: modelIsOW(model) ? "openwebui" : "local",
-          conn: null, workdir: localStorage.workdir || null, perm: "ask", skills: [], webSearch: false, cards: cardPref(), net: false, sandboxOff: false,
+          conn: null, workdir: localStorage.workdir || null, perm: "ask", skills: [], webSearch: false, cards: cardPref(), net: false, sandboxOff: false, mcp: [],
           history: {messages: {}, currentId: null}, updated_at: 0};
   resetPanel(); render(); if (reload) loadList();
 }
@@ -1920,7 +2017,7 @@ async function openChat(id, provider, source) {
   const model = loadedModel(c, provider);
   chat = {id, title: c.title || "Chat", conn: savedConn, workdir: h.conn && !savedConn ? null : (h.workdir || null), perm: "ask", model,
           provider: c.provider || provider || modelProvider(model), source: c.source || source || (modelIsOW(model) ? "openwebui" : "local"),
-          skills: Array.isArray(h.skills) ? h.skills : [], webSearch: !!h.webSearch, cards: h.cards === undefined ? cardPref() : !!h.cards, net: !!h.net, sandboxOff: !!h.sandboxOff,
+          skills: Array.isArray(h.skills) ? h.skills : [], webSearch: !!h.webSearch, cards: h.cards === undefined ? cardPref() : !!h.cards, net: !!h.net, sandboxOff: !!h.sandboxOff, mcp: Array.isArray(h.mcp) ? h.mcp : [],
           history: h.history || {messages: {}, currentId: null}, updated_at: c.updated_at, raw: h};
   if ([...$("model").options].some(o => o.value === chat.model)) $("model").value = chat.model;
   addRecent(chat.workdir); resetPanel(); render();
@@ -2307,6 +2404,11 @@ const READONLY = new Set(["read_file", "list_dir", "glob", "grep"]);
 const pending = {};
 function callTitle(c, a) {         // a: the parsed arguments
   if (!a) { a = {}; try { a = JSON.parse(c.args || "{}"); } catch {} }
+  const mc = mcpOf(c.name);
+  if (mc) {                                  // "Playwright: browser_navigate https://…": the server, the tool, its main argument
+    const s = mcpServer(mc.server), v = Object.values(a).find(x => typeof x === "string" && x.length < 200);
+    return `${s ? s.name : mc.server}: ${mc.tool}${v ? " " + v : ""}`;
+  }
   return {bash: "$ " + (a.command || ""), read_file: "Lesen " + (a.path || ""), write_file: "Schreiben " + (a.path || ""),
     edit_file: "Ändern " + (a.path || ""), list_dir: "Ordner " + (a.path || "."), glob: "Glob " + (a.pattern || ""),
     grep: "Suche " + (a.pattern || ""), web_search: "Websuche: " + (a.query || "")}[c.name] || c.name;
@@ -2331,15 +2433,16 @@ function callHtml(c) {
   const title = callTitle(c, a);
   let detail = c.name === "write_file" ? (a.content || "") : c.name === "edit_file"
     ? (a.old_string || "").split("\n").map(l => "- " + l).join("\n") + "\n" + (a.new_string || "").split("\n").map(l => "+ " + l).join("\n")
-    : c.name === "bash" ? (a.command || "") : "";
+    : c.name === "bash" ? (a.command || "") : mcpOf(c.name) && Object.keys(a).length ? JSON.stringify(a, null, 2) : "";
   if (c.name === "web_search" && c.meta && c.meta.hits) detail = c.meta.hits.length       // the pages, not their whole text
     ? c.meta.hits.map(h => `[${h.n}] ${h.title}\n    ${h.url}`).join("\n") : "Nichts gefunden.";
   else if (c.result) detail += (detail ? "\n\n" : "") + c.result;
   const label = {approval: "wartet auf Freigabe", running: "läuft…", done: "✓", error: "Fehler", denied: "abgelehnt", pending: "…"}[c.status] || "";
   const k = "c" + c.id, open = c.status === "approval" || openSet.has(k);
   // A command without sandbox is confirmed each time: no "Auto" here, and a word on what it may do.
-  const unboxed = c.name === "bash" && !boxed(), id = esc(c.id);
-  const btns = c.status !== "approval" ? "" : (unboxed ? `<div class="note">Nicht abgeschottet: läuft mit deinen Rechten, auch außerhalb des Ordners.</div>` : "")
+  const unboxed = alwaysAsk(c), id = esc(c.id);
+  const btns = c.status !== "approval" ? "" : (unboxed ? `<div class="note">${mcpOf(c.name) ? "Nicht abgeschottet: Der MCP-Server läuft mit deinen Rechten."
+    : "Nicht abgeschottet: läuft mit deinen Rechten, auch außerhalb des Ordners."}</div>` : "")
     + `<div class="btns"><button data-act="allow" data-id="${id}">Erlauben</button>`
     + (unboxed ? "" : `<button data-act="always" data-id="${id}" title="Ab jetzt läuft in diesem Chat alles ohne Rückfrage; Befehle bleiben abgeschottet im Ordner">Auto für diesen Chat</button>`)
     + `<button data-act="deny" data-id="${id}">Ablehnen</button></div>`;
@@ -2426,7 +2529,7 @@ function forkAt(m) {
   editId = null;
   chat = {id: null, title: `${old.title || "Chat"} – Abzweig`, model: old.model, provider: modelProvider(old.model),
           source: modelIsOW(old.model) ? "openwebui" : "local", conn: old.conn, workdir: old.workdir, perm: old.perm,
-          skills: [...(old.skills || [])], webSearch: !!old.webSearch, cards: !!old.cards, net: !!old.net, sandboxOff: !!old.sandboxOff, project: old.project || null, updated_at: 0,
+          skills: [...(old.skills || [])], webSearch: !!old.webSearch, cards: !!old.cards, net: !!old.net, sandboxOff: !!old.sandboxOff, mcp: [...(old.mcp || [])], project: old.project || null, updated_at: 0,
           history: {messages: Object.fromEntries(path.map(x => [x.id, x])), currentId: path.length ? path[path.length - 1].id : null}};
   if (m.role === "user") {
     $("input").value = m.content || ""; $("input").oninput();
@@ -2963,7 +3066,7 @@ const skillsSummary = () => { const n = (chat.skills || []).length; return n ? `
 function plusMenuHtml() {
   return `<div class="item" data-plus="file"><span class="mrow"><i class="mi">${CLIP}</i><span>Datei oder Bild anhängen`
     + `<small class="d">Auch per Ziehen ins Fenster oder Einfügen (Strg+V)</small></span></span></div>`
-    + webRowHtml() + cardRowHtml()
+    + webRowHtml() + cardRowHtml() + mcpRowHtml()
     + `<div class="item has-fly" data-plus="skills"><span class="mrow"><i class="mi">${SPARK}</i><span>Skills<small class="d" id="skillSum">${skillsSummary()}</small></span></span>`
     + `<span class="chev">›</span><div class="fly" id="skillFly">${skillItemsHtml()}</div></div>`;
 }
@@ -2971,17 +3074,21 @@ function refreshSkillFly() {               // only the submenu and the count, so
   if (!$("skillFly")) return;
   $("skillFly").innerHTML = skillItemsHtml(); $("skillSum").textContent = skillsSummary(); fitSkillFly();
 }
-function fitSkillFly() {                    // the submenu opens beside its row and scrolls within the window
-  const fly = $("skillFly"); if (!fly) return;
-  const row = fly.parentElement.getBoundingClientRect(), down = $("plusMenu").classList.contains("down");
-  fly.style.maxHeight = Math.max(160, down ? innerHeight - row.top - 12 : row.bottom - 12) + "px";
-  const room = innerWidth - row.right - 22;                 // as wide as there is room for beside the card
-  fly.style.width = Math.max(220, Math.min(320, room)) + "px";
-  fly.style.left = room < 220 ? "auto" : ""; fly.style.right = room < 220 ? "0" : "";   // no room: over the card
+function fitSkillFly() {                    // the submenus (Skills, MCP) open beside their row and scroll within the window
+  for (const fly of $("plusMenu").querySelectorAll(".fly")) {
+    const row = fly.parentElement.getBoundingClientRect(), down = $("plusMenu").classList.contains("down");
+    fly.style.maxHeight = Math.max(160, down ? innerHeight - row.top - 12 : row.bottom - 12) + "px";
+    const room = innerWidth - row.right - 22;               // as wide as there is room for beside the card
+    fly.style.width = Math.max(220, Math.min(320, room)) + "px";
+    fly.style.left = room < 220 ? "auto" : ""; fly.style.right = room < 220 ? "0" : "";   // no room: over the card
+  }
 }
 function renderSkillChips() {
   $("skillChips").innerHTML = (chat && chat.webSearch ? `<span class="skchip" title="Websuche ist für diesen Chat an">${GLOBE}<span>Websuche</span>`
-    + `<button type="button" data-rmweb="1" title="Websuche ausschalten">${XMARK}</button></span>` : "") + (chat && chat.skills || []).map(s => `<span class="skchip" data-sk="${esc(skillKey(s))}" title="${esc(s.name)} – Klick zeigt den Text">`
+    + `<button type="button" data-rmweb="1" title="Websuche ausschalten">${XMARK}</button></span>` : "")
+    + mcpChat().map(id => `<span class="skchip" title="MCP-Werkzeuge von ${esc(mcpServer(id).name)} sind für diesen Chat an">${PLUG}<span>${esc(mcpServer(id).name)}</span>`
+      + `<button type="button" data-rmmcp="${esc(id)}" title="Ausschalten">${XMARK}</button></span>`).join("")
+    + (chat && chat.skills || []).map(s => `<span class="skchip" data-sk="${esc(skillKey(s))}" title="${esc(s.name)} – Klick zeigt den Text">`
     + `${SPARK}<span>${esc(s.name)}</span><button type="button" data-rmskill="${esc(skillKey(s))}" title="Skill ausschalten">${XMARK}</button></span>`).join("");
 }
 $("plus").onclick = () => {
@@ -2990,15 +3097,21 @@ $("plus").onclick = () => {
   m.innerHTML = plusMenuHtml(); m.classList.add("on"); placeMenu(m); fitSkillFly();
   loadSkills().then(() => { if (m.classList.contains("on")) refreshSkillFly(); });   // a fresh list each time
   loadSearchProviders().then(refreshWebRow);
+  loadMcp().then(() => { if (m.classList.contains("on")) refreshMcpFly(); });
 };
 $("plusMenu").addEventListener("mouseover", e => { if (e.target.closest(".has-fly")) fitSkillFly(); });
 $("plusMenu").onclick = e => {
   const it = e.target.closest(".item"); if (!it) return;
   if (it.dataset.plus === "file") { $("plusMenu").classList.remove("on"); return pickFiles(); }
   if (it.dataset.plus === "manage") return openSkills();
-  if (it.dataset.plus === "skills") { it.classList.toggle("open"); return fitSkillFly(); }   // click (or hover) opens the submenu
+  if (it.dataset.plus === "skills" || it.dataset.plus === "mcp") {      // click (or hover) opens the submenu, one at a time
+    $("plusMenu").querySelectorAll(".has-fly.open").forEach(x => { if (x !== it) x.classList.remove("open"); });
+    it.classList.toggle("open"); return fitSkillFly();
+  }
   if (it.dataset.plus === "web") { if (!it.classList.contains("off")) toggleWebSearch(!chat.webSearch); return; }
   if (it.dataset.plus === "cards") return toggleCards(it);
+  if (it.dataset.plus === "mcpmanage") { $("plusMenu").classList.remove("on"); return openSettings("mcp"); }
+  if (it.dataset.mcp) return toggleMcp(it.dataset.mcp);
   const s = (skillList || []).find(x => skillKey(x) === it.dataset.skill); if (!s) return;
   const on = (chat.skills || []).some(x => skillKey(x) === skillKey(s));
   chat.skills = on ? chat.skills.filter(x => skillKey(x) !== skillKey(s)) : [...(chat.skills || []), {id: s.id, name: s.name, provider: s.provider}];
@@ -3008,6 +3121,8 @@ $("plusMenu").onclick = e => {
 };
 $("skillChips").onclick = async e => {
   if (e.target.closest("[data-rmweb]")) return toggleWebSearch(false);
+  const rmm = e.target.closest("[data-rmmcp]");
+  if (rmm) return toggleMcp(rmm.dataset.rmmcp);
   const rm = e.target.closest("[data-rmskill]");
   if (rm) {
     chat.skills = (chat.skills || []).filter(x => skillKey(x) !== rm.dataset.rmskill); renderSkillChips();
@@ -3284,6 +3399,83 @@ function sourcesHtml(m) {
     + (m.sources && m.sources.length ? `<div class="sources"><span>Quellen</span>${m.sources.map((x, i) =>
         `<a href="${esc(x.url)}" title="${esc(x.title || x.url)}">${i + 1} · ${esc(hostOf(x.url))}</a>`).join("")}</div>` : "");
 }
+// ---- MCP servers (server: mcp.py): more tools, switched on per chat in the + menu ----
+// The model sees a server's tools as "<server id>__<tool>". Programs run in the sandbox with a folder of their own;
+// one that can't, or where the person switched it off, runs with the person's rights, and each of its calls is
+// asked for, also in Auto mode, like an unsandboxed command.
+const PLUG = '<svg viewBox="0 0 24 24"><path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4"/></svg>';
+let mcpServers = null;                      // from /app/mcp: settings and state of each server (null: not asked yet)
+const mcpLive = {};                         // server id -> {tools, unboxed}: started, its tools known
+const mcpFn = {};                           // a tool's name for the model -> {server, tool}
+async function loadMcp() {
+  try { mcpServers = (await api("/app/mcp")).servers || []; } catch { if (mcpServers === null) mcpServers = []; }
+}
+const mcpServer = id => (mcpServers || []).find(s => s.id === id);
+const mcpChat = () => (chat && chat.mcp || []).filter(id => { const s = mcpServer(id); return s && s.enabled; });
+const mcpName = (id, tool) => `${id}__${tool}`.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64);
+function mcpOf(name) {                      // {server, tool} when the model calls an MCP tool, else null
+  if (mcpFn[name]) return mcpFn[name];
+  const i = (name || "").indexOf("__");
+  return i > 0 ? {server: name.slice(0, i), tool: name.slice(i + 2)} : null;
+}
+const mcpUnboxed = id => { const l = mcpLive[id], s = mcpServer(id); return l ? !!l.unboxed : s ? !!s.unboxed : true; };
+// asked for even in Auto mode: commands without the sandbox, and calls to a server running with the person's rights
+const alwaysAsk = c => { const mc = mcpOf(c.name); return mc ? mcpUnboxed(mc.server) : c.name === "bash" && !boxed(); };
+async function mcpStart(id, restart = false) {
+  try {
+    const r = await api(`/app/mcp/${encodeURIComponent(id)}/connect${restart ? "?restart=1" : ""}`, {method: "POST"});
+    mcpLive[id] = r;
+    for (const t of r.tools || []) mcpFn[mcpName(id, t.name)] = {server: id, tool: t.name};
+    return r;
+  } catch (e) { delete mcpLive[id]; throw e; }
+}
+async function ensureMcp() {                // before an answer: the chat's servers running; those that are not, and why
+  if (mcpServers === null) await loadMcp();
+  const failed = [];
+  await Promise.all(mcpChat().map(id => mcpStart(id).catch(e => failed.push(`${mcpServer(id).name}: ${errMsg(e)}`))));
+  return failed;
+}
+function mcpDefs() {                        // the tools of the chat's servers, for the model
+  const out = [];
+  for (const id of mcpChat()) {
+    const l = mcpLive[id], s = mcpServer(id);
+    for (const t of l ? l.tools || [] : []) {
+      const {$schema, ...params} = t.inputSchema || {};       // some upstreams reject the JSON Schema dialect key
+      out.push({type: "function", function: {name: mcpName(id, t.name), description: `${s.name}: ${t.description || t.name}`,
+        parameters: params.type === "object" ? params : {type: "object", properties: {}}}});
+    }
+  }
+  return out;
+}
+function mcpRowHtml() {
+  return `<div class="item has-fly" data-plus="mcp"><span class="mrow"><i class="mi">${PLUG}</i><span>MCP-Werkzeuge<small class="d" id="mcpSum">${mcpSummary()}</small></span></span>`
+    + `<span class="chev">›</span><div class="fly" id="mcpFly">${mcpItemsHtml()}</div></div>`;
+}
+const mcpSummary = () => { const n = mcpChat().length; return n ? `${n} aktiv in diesem Chat` : "Browser (Playwright) und eigene Server"; };
+function mcpItemsHtml() {
+  const manage = `<div class="item" data-plus="mcpmanage"><span class="mrow"><i class="mi">${PEN}</i><span>MCP-Server verwalten…`
+    + `<small class="d">Hinzufügen, Abschottung, Verbindung prüfen</small></span></span></div>`;
+  if (mcpServers === null) return '<span class="pm-note">Lädt…</span>';
+  const list = mcpServers.filter(s => s.enabled);
+  if (!list.length) return '<span class="pm-note">Kein MCP-Server eingeschaltet.</span>' + manage;
+  return '<span class="lbl">Für diesen Chat einschalten</span>' + list.map(s => {
+    const on = (chat.mcp || []).includes(s.id);
+    const sub = s.unboxed ? "Nicht abgeschottet: jeder Aufruf wird bestätigt" : s.builtin ? s.description : s.transport === "http" ? hostOf(s.url) : "Abgeschottet";
+    return `<div class="item" data-mcp="${esc(s.id)}"><span class="mrow"><i class="mi">${s.unboxed ? SHIELD_NO : PLUG}</i><span>${esc(s.name)}<small class="d">${esc(sub)}</small></span></span>`
+      + `<span class="switch${on ? " on" : ""}" role="switch" aria-checked="${on}"></span></div>`;
+  }).join("") + manage;
+}
+function refreshMcpFly() {                  // only the submenu and the count, so an open submenu stays open
+  if (!$("mcpFly")) return;
+  $("mcpFly").innerHTML = mcpItemsHtml(); $("mcpSum").textContent = mcpSummary(); fitSkillFly();
+}
+function toggleMcp(id) {
+  const on = (chat.mcp || []).includes(id);
+  chat.mcp = on ? chat.mcp.filter(x => x !== id) : [...(chat.mcp || []), id];
+  if (!on) mcpStart(id).catch(() => {});    // started now (the first time it downloads), so the answer need not wait
+  refreshMcpFly(); renderSkillChips();
+  if (chat.id) save().catch(() => {});
+}
 // ---- information cards as a tool: the switch per chat (default: the last choice) and what the model is told ----
 const cardPref = () => { try { return localStorage.cards !== "0"; } catch { return true; } };
 function cardRowHtml() {
@@ -3357,7 +3549,7 @@ function toOpenWebUI() {
   const msgs = chat.history.messages;
   const flat = Object.values(msgs).sort((a, b) => a.timestamp - b.timestamp);
   return {id: chat.id || "", title: chat.title, models: [modelName(chat.model)], params: {}, app_model: chat.model,
-          history: chat.history, workdir: chat.workdir, conn: chat.conn, skills: chat.skills || [], webSearch: !!chat.webSearch, cards: !!chat.cards, net: !!chat.net, sandboxOff: !!chat.sandboxOff, project: chat.project || null, messages: flat, tags: [], files: [], timestamp: Date.now()};
+          history: chat.history, workdir: chat.workdir, conn: chat.conn, skills: chat.skills || [], webSearch: !!chat.webSearch, cards: !!chat.cards, net: !!chat.net, sandboxOff: !!chat.sandboxOff, mcp: chat.mcp || [], project: chat.project || null, messages: flat, tags: [], files: [], timestamp: Date.now()};
 }
 async function save() {
   // A chat stays where it was first saved (Open WebUI or this computer), also when a model of another
@@ -3366,7 +3558,7 @@ async function save() {
   if (chat.source !== "openwebui") {
     const r = await api("/app/chats", json("POST", {id: chat.id || "", title: chat.title, model: chat.model,
       provider: chat.provider, history: chat.history, workdir: chat.workdir, conn: chat.conn, skills: chat.skills || [], webSearch: !!chat.webSearch, cards: !!chat.cards, net: !!chat.net,
-      sandboxOff: !!chat.sandboxOff, project: chat.project || null}));
+      sandboxOff: !!chat.sandboxOff, mcp: chat.mcp || [], project: chat.project || null}));
     chat.id = r.id; chat.updated_at = r.updated_at;
     return;
   }
@@ -3438,7 +3630,7 @@ function payload(upto) {
 
 async function streamStep(msgs, step, ctrl) {
   const body = {model: chat.model, stream: true, messages: msgs};
-  const tools = [...(chat.workdir ? TOOLS : []), ...(webOn() ? [WEB_TOOL] : [])];
+  const tools = [...(chat.workdir ? TOOLS : []), ...(webOn() ? [WEB_TOOL] : []), ...mcpDefs()];
   if (tools.length) body.tools = tools;
   const r = await fetch("/v1/chat/completions", {...json("POST", body), signal: ctrl.signal});
   if (r.status === 401) { showLogin(); throw new Error("Nicht angemeldet"); }
@@ -3481,7 +3673,8 @@ async function runCall(c, ctrl, a) {
   try { args = JSON.parse(c.args || "{}"); }
   catch (e) { c.status = "error"; c.result = "Error: arguments are not valid JSON: " + e.message; return; }
   if (c.name === "web_search") return webSearchCall(c, args, ctrl, a);
-  if (!READONLY.has(c.name) && (chat.perm !== "auto" || (c.name === "bash" && !boxed()))) {   // no sandbox: always ask
+  const mc = mcpOf(c.name);
+  if (!READONLY.has(c.name) && (chat.perm !== "auto" || alwaysAsk(c))) {   // no sandbox: always ask
     c.status = "approval"; render();
     const choice = await new Promise(res => { pending[c.id] = res; ctrl.signal.addEventListener("abort", () => res("deny"), {once: true}); });
     delete pending[c.id];
@@ -3489,8 +3682,8 @@ async function runCall(c, ctrl, a) {
     if (choice === "always") { chat.perm = "auto"; }
   }
   c.status = "running"; render();
-  const r = await (await fetch("/app/tool", {...json("POST", {workdir: chat.workdir, name: c.name, args, conn: chat.conn,
-    net: boxed() && !!chat.net, box: boxed()}), signal: ctrl.signal})).json();
+  const r = await (await fetch(mc ? "/app/mcp/call" : "/app/tool", {...json("POST", mc ? {server: mc.server, tool: mc.tool, args}
+    : {workdir: chat.workdir, name: c.name, args, conn: chat.conn, net: boxed() && !!chat.net, box: boxed()}), signal: ctrl.signal})).json();
   c.result = r.output; c.status = r.is_error ? "error" : "done"; c.meta = r.meta || undefined;
   if (!r.is_error && (c.name === "write_file" || c.name === "edit_file")) refreshTab(norm(args.path || ""));
 }
@@ -3520,6 +3713,7 @@ async function reply(u) {          // a new answer to user message u (also: "reg
   const missing = [];                         // skills whose text cannot be fetched go without, and the answer says so
   await Promise.all((chat.skills || []).map(sk => skillContent(sk).catch(() => { missing.push(sk.name); })));
   if (searchProviders === null) await loadSearchProviders();   // webOn() and webPrompt() need to know
+  const mcpFailed = await ensureMcp();        // the chat's MCP servers running (the first start downloads), else without
   try {
     // No fixed number of steps: the run goes on until the model is done or the stop button ends it. Only a model
     // going round in circles stops: the same calls with the same results, SAME_TURNS times in a row.
@@ -3541,6 +3735,7 @@ async function reply(u) {          // a new answer to user message u (also: "reg
     }
   } catch (e) { if (e.name !== "AbortError") a.error = String(e.message || e); }
   if (missing.length && !a.error) a.error = `Skill „${missing.join("“, „")}“ konnte nicht geladen werden; die Antwort kam ohne ihn.`;
+  if (mcpFailed.length && !a.error) a.error = `MCP-Server startet nicht, die Antwort kam ohne seine Werkzeuge: ${mcpFailed.join("; ")}`;
   const last = a.steps[a.steps.length - 1];
   if (last && !last.content.trim() && !last.calls.length && !a.error && !ctrl.signal.aborted)
     a.error = "Das Modell hat ohne Antwort aufgehört. Schick die Aufgabe noch einmal oder wähle ein anderes Modell.";
@@ -3596,6 +3791,7 @@ async function boot() {
   models.catch(() => {}); listed.catch(() => {});      // not logged in after all: nobody waits for them
   const st = await (await fetch("/app/status")).json();
   debugLog = !!st.debug; homeDir = st.home || ""; SANDBOX = st.sandbox || SANDBOX;
+  loadMcp().then(() => { if (chat) renderSkillChips(); });     // the chips of a chat's MCP servers need their names
   setProvInfo(st.providers); if (list.length) renderList();       // the list may be here first: now with the symbols
   const logged = (st.providers || []).filter(p => p.logged_in);
   if (logged.length) $("login").classList.remove("on");
